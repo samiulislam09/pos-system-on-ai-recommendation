@@ -1,0 +1,379 @@
+import { z } from "zod";
+
+const cuid = z.string().min(1);
+const sku = z.string().min(1).max(64);
+const positiveInt = z.number().int().positive();
+const nonNegativeInt = z.number().int().min(0);
+const price = z.coerce.number().nonnegative().multipleOf(0.01);
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
+export const registerOrganizationSchema = z.object({
+  organizationName: z.string().min(1).max(120),
+  organizationCode: z
+    .string()
+    .min(2)
+    .max(20)
+    .regex(/^[A-Z0-9-_]+$/, "code may only contain A-Z, 0-9, - and _"),
+  name: z.string().min(1).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+});
+
+// ---------------------------------------------------------------------------
+// Users & roles
+// ---------------------------------------------------------------------------
+
+export const createUserSchema = z.object({
+  name: z.string().min(1).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+  role: z.enum([
+    "ORGANIZATION_ADMIN",
+    "MANAGER",
+    "STORE_MANAGER",
+    "INVENTORY_MANAGER",
+    "CASHIER",
+    "VIEWER",
+  ]),
+});
+
+export const updateUserSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    role: z.enum([
+      "ORGANIZATION_ADMIN",
+      "MANAGER",
+      "STORE_MANAGER",
+      "INVENTORY_MANAGER",
+      "CASHIER",
+      "VIEWER",
+    ]).optional(),
+    status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+    password: z.string().min(8).max(128).optional(),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// Organizations
+// ---------------------------------------------------------------------------
+
+export const createOrganizationSchema = z.object({
+  name: z.string().min(1).max(120),
+  code: z
+    .string()
+    .min(2)
+    .max(20)
+    .regex(/^[A-Z0-9-_]+$/, "code may only contain A-Z, 0-9, - and _"),
+  settings: z.record(z.unknown()).optional(),
+});
+
+export const updateOrganizationSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    settings: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// Locations / stores
+// ---------------------------------------------------------------------------
+
+export const createLocationSchema = z.object({
+  name: z.string().min(1).max(120),
+  code: z.string().min(1).max(32),
+  type: z.enum(["STORE", "WAREHOUSE"]),
+  address: z.string().max(255).optional(),
+  settings: z.record(z.unknown()).optional(),
+});
+
+export const updateLocationSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    address: z.string().max(255).optional(),
+    status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+    settings: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+export const createPostTerminalSchema = z.object({
+  storeId: cuid,
+  terminalCode: z.string().min(1).max(32),
+});
+
+export const updatePostTerminalSchema = z
+  .object({
+    status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+export const createCategorySchema = z.object({
+  name: z.string().min(1).max(120),
+  parentId: cuid.optional(),
+});
+
+export const createBrandSchema = z.object({
+  name: z.string().min(1).max(120),
+});
+
+export const createProductSchema = z.object({
+  sku,
+  name: z.string().min(1).max(200),
+  description: z.string().max(1000).optional(),
+  categoryId: cuid.optional(),
+  brandId: cuid.optional(),
+  unit: z.string().max(20).default("pcs"),
+  costPrice: price,
+  sellingPrice: price,
+  reorderLevel: nonNegativeInt.default(0),
+  variants: z
+    .array(
+      z.object({
+        sku,
+        barcode: z.string().max(64).optional(),
+        size: z.string().max(32).optional(),
+        color: z.string().max(32).optional(),
+      })
+    )
+    .optional(),
+});
+
+export const updateProductSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    description: z.string().max(1000).optional(),
+    categoryId: cuid.optional().nullable(),
+    brandId: cuid.optional().nullable(),
+    unit: z.string().max(20).optional(),
+    costPrice: price.optional(),
+    sellingPrice: price.optional(),
+    reorderLevel: nonNegativeInt.optional(),
+    status: z.enum(["ACTIVE", "INACTIVE", "DISCONTINUED"]).optional(),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// Inventory
+// ---------------------------------------------------------------------------
+
+export const adjustInventorySchema = z.object({
+  locationId: cuid,
+  reason: z.enum([
+    "DAMAGED",
+    "LOST",
+    "STOCK_COUNT_VARIANCE",
+    "FOUND",
+    "MANUAL_CORRECTION",
+    "OTHER",
+  ]),
+  items: z
+    .array(
+      z.object({
+        productId: cuid,
+        quantity: z.number().int().refine((v) => v !== 0, {
+          message: "quantity must be non-zero",
+        }),
+        reason: z
+          .enum([
+            "DAMAGED",
+            "LOST",
+            "STOCK_COUNT_VARIANCE",
+            "FOUND",
+            "MANUAL_CORRECTION",
+            "OTHER",
+          ])
+          .optional(),
+      })
+    )
+    .min(1),
+  notes: z.string().max(500).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Sales / events
+// ---------------------------------------------------------------------------
+
+export const saleItemSchema = z
+  .object({
+    sku,
+    quantity: positiveInt,
+  })
+  .strict();
+
+export const returnItemSchema = z.object({
+  sku,
+  quantity: positiveInt,
+  unitPrice: price,
+});
+
+export const saleEventSchema = z
+  .object({
+    eventId: z.string().min(1).max(64),
+    type: z.literal("SALE"),
+    storeId: cuid,
+    terminalId: cuid.optional(),
+    timestamp: z.string().datetime(),
+    items: z.array(saleItemSchema).min(1),
+  })
+  .strict();
+
+export const returnEventSchema = z.object({
+  eventId: z.string().min(1).max(64),
+  type: z.literal("RETURN"),
+  storeId: cuid,
+  terminalId: cuid.optional(),
+  timestamp: z.string().datetime(),
+  saleId: cuid.optional(),
+  reason: z.string().max(500).optional(),
+  items: z.array(returnItemSchema).min(1),
+});
+
+export const posProductsQuerySchema = z.object({
+  storeId: cuid,
+  q: z.string().trim().max(120).default(""),
+  limit: z.coerce.number().int().positive().max(50).default(25),
+});
+
+export const posEventSchema = z.discriminatedUnion("type", [
+  saleEventSchema,
+  returnEventSchema,
+]);
+
+export const eventBatchSchema = z.object({
+  events: z.array(posEventSchema).min(1).max(500),
+});
+
+// ---------------------------------------------------------------------------
+// Purchases
+// ---------------------------------------------------------------------------
+
+export const createSupplierSchema = z.object({
+  name: z.string().min(1).max(120),
+  contactName: z.string().max(120).optional(),
+  phone: z.string().max(32).optional(),
+  email: z.string().email().optional(),
+  address: z.string().max(255).optional(),
+});
+
+export const createPurchaseOrderSchema = z.object({
+  supplierId: cuid,
+  locationId: cuid.optional(),
+  expectedAt: z.string().datetime().optional(),
+  notes: z.string().max(500).optional(),
+  items: z
+    .array(
+      z.object({
+        productId: cuid,
+        quantity: positiveInt,
+        unitCost: price,
+      })
+    )
+    .min(1),
+});
+
+export const receivePurchaseOrderSchema = z.object({
+  locationId: cuid,
+  receivedById: cuid.optional(),
+  notes: z.string().max(500).optional(),
+  items: z
+    .array(
+      z.object({
+        purchaseOrderItemId: cuid,
+        productId: cuid,
+        quantity: positiveInt,
+      })
+    )
+    .min(1),
+});
+
+// ---------------------------------------------------------------------------
+// Transfers
+// ---------------------------------------------------------------------------
+
+export const createTransferSchema = z.object({
+  sourceLocationId: cuid,
+  destinationLocationId: cuid,
+  notes: z.string().max(500).optional(),
+  items: z
+    .array(
+      z.object({
+        productId: cuid,
+        quantity: positiveInt,
+      })
+    )
+    .min(1),
+});
+
+export const receiveTransferSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        transferItemId: cuid,
+        quantity: positiveInt,
+      })
+    )
+    .min(1),
+});
+
+// ---------------------------------------------------------------------------
+// Returns (admin approve)
+// ---------------------------------------------------------------------------
+
+export const approveReturnSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        returnItemId: cuid,
+        quantity: positiveInt,
+      })
+    )
+    .min(1),
+});
+
+// ---------------------------------------------------------------------------
+// Pagination
+// ---------------------------------------------------------------------------
+
+export const paginationSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(25),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;
+export type RegisterOrganizationInput = z.infer<typeof registerOrganizationSchema>;
+export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
+export type CreateLocationInput = z.infer<typeof createLocationSchema>;
+export type UpdateLocationInput = z.infer<typeof updateLocationSchema>;
+export type CreateSupplierInput = z.infer<typeof createSupplierSchema>;
+export type CreateProductInput = z.infer<typeof createProductSchema>;
+export type UpdateProductInput = z.infer<typeof updateProductSchema>;
+export type AdjustInventoryInput = z.infer<typeof adjustInventorySchema>;
+export type SaleEventInput = z.infer<typeof saleEventSchema>;
+export type ReturnEventInput = z.infer<typeof returnEventSchema>;
+export type PosEventInput = z.infer<typeof posEventSchema>;
+export type PosProductsQueryInput = z.infer<typeof posProductsQuerySchema>;
+export type CreatePurchaseOrderInput = z.infer<typeof createPurchaseOrderSchema>;
+export type ReceivePurchaseOrderInput = z.infer<typeof receivePurchaseOrderSchema>;
+export type CreateTransferInput = z.infer<typeof createTransferSchema>;
+export type ReceiveTransferInput = z.infer<typeof receiveTransferSchema>;
+export type ApproveReturnInput = z.infer<typeof approveReturnSchema>;

@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# test/coverage
+coverage/
+.nyc_output/
+
+# misc
+.DS_Store
+*.pem
+
+# databases
+*.sqlite
+*.sqlite-journal
+*.db
+
+# prisma
+apps/**/generated/

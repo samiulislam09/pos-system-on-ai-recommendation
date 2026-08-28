@@ -1,0 +1,159 @@
+# Full development stack: postgres + redis + api + worker + web.
+#
+# postgres and redis are reused from backend/docker-compose.yml via `include`,
+# so there is exactly one definition of them. Because they share container
+# names, do NOT run this file and backend/docker-compose.yml at the same time.
+#
+#   docker compose up --build          # everything, with hot reload
+#   docker compose logs -f api web     # follow app logs
+#   docker compose down                # stop (keeps db data)
+#
+include:
+  - backend/docker-compose.yml
+
+services:
+  # ---------------------------------------------------------------------------
+  # One-shot: prisma generate -> build shared packages -> migrate -> seed.
+  # api and worker wait for this to exit 0.
+  # ---------------------------------------------------------------------------
+  backend-init:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: inventory-backend-init
+    command: ["sh", "/app/infrastructure/docker/dev-init.sh"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory_platform
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./backend:/app
+      - backend_root_modules:/app/node_modules
+      - backend_api_modules:/app/apps/api/node_modules
+      - backend_worker_modules:/app/apps/worker/node_modules
+      - backend_edge_modules:/app/apps/edge/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: inventory-api
+    restart: unless-stopped
+    command: ["npm", "run", "dev:api"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory_platform
+      REDIS_URL: redis://redis:6379
+      API_PORT: "4000"
+      API_HOST: 0.0.0.0
+      # Must list every origin the browser may load the web app from.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000,http://localhost:3001}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-please-change-me-32chars}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-please-change-me-32chars}
+      JWT_ACCESS_TTL: "900"
+      JWT_REFRESH_TTL: "2592000"
+      SALT_ROUNDS: "12"
+      ML_SERVICE_URL: http://ml:5001
+      # tsc's default fs.watch is unreliable over macOS bind mounts.
+      TSC_WATCHFILE: UseFsEventsWithFallbackDynamicPolling
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend:/app
+      - backend_root_modules:/app/node_modules
+      - backend_api_modules:/app/apps/api/node_modules
+      - backend_worker_modules:/app/apps/worker/node_modules
+      - backend_edge_modules:/app/apps/edge/node_modules
+    depends_on:
+      backend-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: inventory-worker
+    restart: unless-stopped
+    command: ["npm", "run", "dev:worker"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory_platform
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./backend:/app
+      - backend_root_modules:/app/node_modules
+      - backend_api_modules:/app/apps/api/node_modules
+      - backend_worker_modules:/app/apps/worker/node_modules
+      - backend_edge_modules:/app/apps/edge/node_modules
+    depends_on:
+      backend-init:
+        condition: service_completed_successfully
+
+  # ---------------------------------------------------------------------------
+  # AI/ML pipeline (Prophet + LightGBM) with its own small dashboard on :5001.
+  # The api proxies /ai/run and /ai/run/status here.
+  # ---------------------------------------------------------------------------
+  ml:
+    build:
+      context: ./ml
+    container_name: inventory-ml
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory_platform
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./ml/reports:/app/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: inventory-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      # Browser requests stay same-origin; Next proxies them over the Docker network.
+      NEXT_PUBLIC_API_URL: /api/v1
+      API_PROXY_TARGET: http://api:4000
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      # Override with WEB_PORT if something else on the host owns 3000.
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - web_node_modules:/app/node_modules
+      - web_next_cache:/app/.next
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  backend_root_modules:
+  backend_api_modules:
+  backend_worker_modules:
+  backend_edge_modules:
+  web_node_modules:
+  web_next_cache:

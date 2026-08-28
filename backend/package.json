@@ -1,0 +1,36 @@
+{
+  "name": "inventory-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend services for the Multi-Store Inventory & Transaction Management Platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "npm run db:generate",
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:api": "npm run dev -w @inv/api",
+    "dev:worker": "npm run dev -w @inv/worker",
+    "dev:edge": "npm run dev -w @inv/edge",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "npm run db:generate -w @inv/database",
+    "db:migrate": "npm run db:migrate -w @inv/database",
+    "db:deploy": "npm run db:deploy -w @inv/database",
+    "db:seed": "npm run db:seed -w @inv/database",
+    "db:studio": "npm run db:studio -w @inv/database"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^26.2.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@11.17.0"
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@inv/edge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"edge tests: see apps/edge/test\""
+  },
+  "dependencies": {
+    "@inv/events": "*",
+    "@inv/validation": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
