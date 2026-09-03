@@ -33,6 +33,24 @@ export class InventoryService {
         ).map((p) => p.id)
       : undefined;
 
+    // Stock status compares Inventory.quantity to Product.reorderLevel — a
+    // cross-table predicate Prisma's where can't express, so resolve the
+    // matching row ids in SQL and filter/count/paginate on those.
+    let stockStatusIds: string[] | undefined;
+    if (filters.stockStatus) {
+      const matches = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT inv.id FROM "Inventory" inv
+        JOIN "Product" p ON p.id = inv."productId"
+        WHERE inv."organizationId" = ${organizationId}
+          AND CASE ${filters.stockStatus}
+            WHEN 'OUT_OF_STOCK' THEN inv.quantity <= 0
+            WHEN 'LOW_STOCK' THEN inv.quantity > 0 AND inv.quantity <= p."reorderLevel"
+            ELSE inv.quantity > p."reorderLevel"
+          END
+      `;
+      stockStatusIds = matches.map((m) => m.id);
+    }
+
     const where: Prisma.InventoryWhereInput = {
       organizationId,
       ...(filters.locationId ? { locationId: filters.locationId } : {}),
@@ -41,9 +59,10 @@ export class InventoryService {
       ...(filters.brandId
         ? { product: { brandId: filters.brandId, organizationId } }
         : {}),
+      ...(stockStatusIds ? { id: { in: stockStatusIds } } : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    const [data, total] = await Promise.all([
       this.prisma.inventory.findMany({
         where,
         include: {
@@ -56,17 +75,6 @@ export class InventoryService {
       }),
       this.prisma.inventory.count({ where }),
     ]);
-
-    let data = rows;
-    if (filters.stockStatus) {
-      data = rows.filter((r) => {
-        const p = r.product;
-        if (filters.stockStatus === "OUT_OF_STOCK") return r.quantity <= 0;
-        if (filters.stockStatus === "LOW_STOCK")
-          return r.quantity > 0 && r.quantity <= p.reorderLevel;
-        return r.quantity > p.reorderLevel;
-      });
-    }
 
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
