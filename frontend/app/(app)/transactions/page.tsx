@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import {
@@ -10,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
   Empty,
-  Loading,
+  TableSkeleton,
   PageHeader,
   Select,
   Table,
@@ -76,8 +77,17 @@ const STATUS_COLORS: Record<string, "green" | "red" | "amber" | "blue" | "zinc">
 };
 
 export default function TransactionsPage() {
-  const [type, setType] = useState("");
-  const [status, setStatus] = useState("");
+  return (
+    <Suspense>
+      <TransactionsView />
+    </Suspense>
+  );
+}
+
+function TransactionsView() {
+  const searchParams = useSearchParams();
+  const [type, setType] = useState(searchParams.get("type") ?? "");
+  const [status, setStatus] = useState(searchParams.get("status") ?? "");
   const [page, setPage] = useState(1);
 
   const transactions = useQuery({
@@ -97,19 +107,25 @@ export default function TransactionsPage() {
 
       <Card>
         <CardContent className="pt-5">
-          <div className="flex flex-wrap gap-3">
-            <Select value={type} onChange={(e) => { setType(e.target.value); setPage(1); }} className="max-w-xs">
-              <option value="">All types</option>
-              {["SALE", "RETURN"].map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </Select>
-            <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="max-w-xs">
-              <option value="">All statuses</option>
-              {["RECEIVED", "PROCESSED", "FAILED"].map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </Select>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label htmlFor="txn-type" className="mb-1 block text-xs font-medium text-zinc-500">Type</label>
+              <Select id="txn-type" value={type} onChange={(e) => { setType(e.target.value); setPage(1); }} className="max-w-xs">
+                <option value="">All types</option>
+                {["SALE", "RETURN"].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label htmlFor="txn-status" className="mb-1 block text-xs font-medium text-zinc-500">Status</label>
+              <Select id="txn-status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="max-w-xs">
+                <option value="">All statuses</option>
+                {["RECEIVED", "PROCESSED", "FAILED"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -120,7 +136,7 @@ export default function TransactionsPage() {
         </CardHeader>
         <CardContent>
           {transactions.isLoading ? (
-            <Loading />
+            <TableSkeleton />
           ) : transactions.isError ? (
             <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">Transactions could not be loaded. Check the API connection and try again.</p>
           ) : data && data.data.length > 0 ? (

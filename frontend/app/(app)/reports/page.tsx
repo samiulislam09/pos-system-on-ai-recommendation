@@ -24,6 +24,7 @@ import {
   formatMoney,
   formatNumber,
 } from "@/components/ui";
+import { SalesBarChart } from "@/components/sales-chart";
 
 interface SalesByDay {
   day: string;
@@ -92,8 +93,22 @@ export default function ReportsPage() {
         eyebrow="Analytics"
         title="Reports"
         description="Sales performance and stock movement across your selected period."
-        actions={<div className="flex flex-wrap items-center gap-2"><label className="text-xs font-medium text-zinc-500">From</label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-auto" /><label className="text-xs font-medium text-zinc-500">To</label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-auto" /></div>}
       />
+
+      <Card>
+        <CardContent className="pt-5">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label htmlFor="report-from" className="mb-1 block text-xs font-medium text-zinc-500">From</label>
+              <Input id="report-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-auto" />
+            </div>
+            <div>
+              <label htmlFor="report-to" className="mb-1 block text-xs font-medium text-zinc-500">To</label>
+              <Input id="report-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-auto" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {!validRange ? <p role="alert" className="text-sm text-red-600">The start date must not be after the end date.</p> : null}
       {[sales, stores, top, movements].some((query) => query.isError) ? (
@@ -111,7 +126,7 @@ export default function ReportsPage() {
         <Card>
           <CardHeader><CardTitle>Sales per day</CardTitle></CardHeader>
           <CardContent>
-            {sales.isLoading ? <Loading /> : sales.data && sales.data.length ? <BarChart data={sales.data} /> : <Empty />}
+            {sales.isLoading ? <Loading /> : sales.data && sales.data.length ? <SalesBarChart data={sales.data} /> : <Empty />}
           </CardContent>
         </Card>
 
@@ -205,19 +220,3 @@ export default function ReportsPage() {
   );
 }
 
-function BarChart({ data }: { data: SalesByDay[] }) {
-  const max = Math.max(...data.map((d) => parseFloat(d.total)), 1);
-  return (
-    <div className="flex h-40 items-end gap-1">
-      {data.map((d) => (
-        <div key={d.day} className="group relative flex h-full flex-1 items-end">
-          <div
-            className="w-full rounded-t-sm bg-teal-600 transition-colors group-hover:bg-teal-700"
-            style={{ height: `${Math.max((parseFloat(d.total) / max) * 100, 2)}%` }}
-            title={`${d.day}: ${formatMoney(d.total)} (${d.transactions} txns)`}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}

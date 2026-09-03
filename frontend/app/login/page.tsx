@@ -73,10 +73,12 @@ export default function LoginPage() {
                 {loading ? "Signing in..." : "Sign in"}
               </Button>
             </form>
-            <div className="mt-8 rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-5 text-zinc-500">
-              <p className="font-semibold text-zinc-700">Demo access</p>
-              <p><span className="font-mono">admin@demo.com</span> / <span className="font-mono">admin123</span></p>
-            </div>
+            {process.env.NODE_ENV === "development" ? (
+              <div className="mt-8 rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-5 text-zinc-500">
+                <p className="font-semibold text-zinc-700">Demo access</p>
+                <p><span className="font-mono">admin@demo.com</span> / <span className="font-mono">admin123</span></p>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

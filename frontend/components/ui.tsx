@@ -177,7 +177,7 @@ export function StatCard({
 }: {
   label: string;
   value: React.ReactNode;
-  hint?: string;
+  hint?: React.ReactNode;
 }) {
   return (
     <Card className="relative overflow-hidden">
@@ -205,9 +205,27 @@ export function Loading({ label = "Loading..." }: { label?: string }) {
   );
 }
 
-export function Empty({ label = "No data" }: { label?: string }) {
+export function Empty({ label = "No data", hint }: { label?: string; hint?: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-4 py-10 text-center text-sm text-zinc-500">{label}</div>
+    <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 px-4 py-10 text-center text-sm text-zinc-500">
+      <p>{label}</p>
+      {hint ? <p className="mt-1 text-xs text-zinc-400">{hint}</p> : null}
+    </div>
+  );
+}
+
+export function TableSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="animate-pulse space-y-3 py-2" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4">
+          <div className="h-4 w-1/3 rounded bg-zinc-200" />
+          <div className="h-4 w-1/6 rounded bg-zinc-200" />
+          <div className="h-4 flex-1 rounded bg-zinc-200" />
+          <div className="h-4 w-16 rounded bg-zinc-200" />
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -1,10 +1,20 @@
-import { Button, Card, CardContent, CardHeader, CardTitle, formatMoney } from "@/components/ui";
-import type { CartLine } from "@/lib/pos";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, formatMoney } from "@/components/ui";
+import type { CartLine, PaymentMethod } from "@/lib/pos";
+
+const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
+  { value: "CASH", label: "Cash" },
+  { value: "CARD", label: "Card" },
+  { value: "MOBILE_PAYMENT", label: "Mobile" },
+];
 
 export function CartPanel({
   lines,
   disabled,
   submitting,
+  paymentMethod,
+  amountTendered,
+  onPaymentMethod,
+  onAmountTendered,
   onQuantity,
   onRemove,
   onClear,
@@ -13,6 +23,10 @@ export function CartPanel({
   lines: CartLine[];
   disabled: boolean;
   submitting: boolean;
+  paymentMethod: PaymentMethod;
+  amountTendered: string;
+  onPaymentMethod: (method: PaymentMethod) => void;
+  onAmountTendered: (value: string) => void;
   onQuantity: (sku: string, quantity: number) => void;
   onRemove: (sku: string) => void;
   onClear: () => void;
@@ -20,6 +34,8 @@ export function CartPanel({
 }) {
   const itemCount = lines.reduce((total, line) => total + line.quantity, 0);
   const total = lines.reduce((sum, line) => sum + Number(line.product.sellingPrice) * line.quantity, 0);
+  const tendered = Number.parseFloat(amountTendered);
+  const changeDue = Number.isFinite(tendered) ? tendered - total : null;
 
   return (
     <Card className="lg:sticky lg:top-0">
@@ -61,7 +77,59 @@ export function CartPanel({
           <div className="flex justify-between"><span className="text-zinc-500">Subtotal</span><span>{formatMoney(total)}</span></div>
           <div className="flex justify-between text-lg font-bold"><span>Total</span><span>{formatMoney(total)}</span></div>
         </div>
-        <p className="mt-4 rounded-md bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">Payment is not recorded now. The sale will have payment status PENDING.</p>
+        <div className="mt-4 space-y-3">
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-zinc-500">Payment method</p>
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Payment method">
+              {PAYMENT_METHODS.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={paymentMethod === m.value}
+                  disabled={disabled}
+                  onClick={() => onPaymentMethod(m.value)}
+                  className={`min-h-11 rounded-lg border text-sm font-medium transition-colors disabled:opacity-40 ${
+                    paymentMethod === m.value
+                      ? "border-teal-600 bg-teal-50 text-teal-800 dark:bg-teal-950/40 dark:text-teal-200"
+                      : "border-zinc-300 bg-white text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {paymentMethod === "CASH" ? (
+            <div>
+              <label htmlFor="amount-tendered" className="mb-1.5 block text-xs font-medium text-zinc-500">
+                Amount received (optional)
+              </label>
+              <Input
+                id="amount-tendered"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={amountTendered}
+                disabled={disabled}
+                onChange={(e) => onAmountTendered(e.target.value)}
+              />
+              {changeDue !== null && lines.length > 0 ? (
+                changeDue >= 0 ? (
+                  <p className="mt-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                    Change due: {formatMoney(changeDue)}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-sm text-amber-700 dark:text-amber-400">
+                    {formatMoney(Math.abs(changeDue))} short of the total
+                  </p>
+                )
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         <Button className="mt-4 min-h-12 w-full text-base" disabled={disabled || lines.length === 0} onClick={onSubmit}>
           {submitting ? "Recording sale..." : "Complete sale"}
         </Button>

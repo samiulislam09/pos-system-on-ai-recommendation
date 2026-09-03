@@ -221,6 +221,15 @@ export const returnItemSchema = z.object({
   unitPrice: price,
 });
 
+// The client only picks the method; the payment amount is always the
+// server-computed sale total (amountTendered is informational, for change).
+export const salePaymentSchema = z
+  .object({
+    method: z.enum(["CASH", "CARD", "MOBILE_PAYMENT"]),
+    amountTendered: price.optional(),
+  })
+  .strict();
+
 export const saleEventSchema = z
   .object({
     eventId: z.string().min(1).max(64),
@@ -229,6 +238,7 @@ export const saleEventSchema = z
     terminalId: cuid.optional(),
     timestamp: z.string().datetime(),
     items: z.array(saleItemSchema).min(1),
+    payment: salePaymentSchema.optional(),
   })
   .strict();
 

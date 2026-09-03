@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
   Empty,
-  Loading,
+  TableSkeleton,
   PageHeader,
   Table,
   TBody,
@@ -59,7 +59,7 @@ export default function ProductsPage() {
         </CardHeader>
         <CardContent>
           {products.isLoading ? (
-            <Loading />
+            <TableSkeleton />
           ) : products.data && products.data.data.length > 0 ? (
             <Table>
               <THead>
@@ -79,7 +79,11 @@ export default function ProductsPage() {
                       <Link href={`/products/${p.id}`} className="font-semibold text-teal-700 hover:text-teal-900 hover:underline">
                         {p.name}
                       </Link>
-                      <div className="text-xs text-zinc-500">{p.brand?.name ?? "—"} · {p.category?.name ?? "—"}</div>
+                      {(p.brand || p.category) && (
+                        <div className="text-xs text-zinc-500">
+                          {[p.brand?.name, p.category?.name].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
                     </TD>
                     <TD className="font-mono text-xs">{p.sku}</TD>
                     <TD className="text-right">{formatNumber(totalStock(p))}</TD>
@@ -93,7 +97,7 @@ export default function ProductsPage() {
               </TBody>
             </Table>
           ) : (
-            <Empty label="No products yet" />
+            <Empty label="No products yet" hint="Use the New product button above to add your first item." />
           )}
         </CardContent>
       </Card>

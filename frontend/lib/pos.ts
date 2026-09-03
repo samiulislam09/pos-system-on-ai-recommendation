@@ -30,6 +30,8 @@ export interface CartLine {
   quantity: number;
 }
 
+export type PaymentMethod = "CASH" | "CARD" | "MOBILE_PAYMENT";
+
 export interface PendingSale {
   readonly eventId: string;
   readonly type: "SALE";
@@ -37,6 +39,7 @@ export interface PendingSale {
   readonly terminalId?: string;
   readonly timestamp: string;
   readonly items: ReadonlyArray<Readonly<{ sku: string; quantity: number }>>;
+  readonly payment?: Readonly<{ method: PaymentMethod; amountTendered?: number }>;
 }
 
 export interface ProcessResult {

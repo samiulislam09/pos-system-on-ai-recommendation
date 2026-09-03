@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import {
@@ -20,6 +22,7 @@ import {
   TR,
   formatMoney,
 } from "@/components/ui";
+import { SalesBarChart } from "@/components/sales-chart";
 
 interface Overview {
   todaySales: number;
@@ -59,12 +62,30 @@ export default function DashboardPage() {
     queryFn: () => apiFetch<TopProduct[]>("/reports/top-products"),
   });
 
+  const [yesterdayKey] = useState(() => new Date(Date.now() - 86_400_000).toISOString().slice(0, 10));
+  const byDay = new Map(sales.data?.map((d) => [d.day.slice(0, 10), d]) ?? []);
+  const yesterday = byDay.get(yesterdayKey);
+
   return (
     <div className="space-y-7">
       <PageHeader eyebrow="Workspace" title="Operations overview" description="A live view of sales, inventory health, and activity across every location." actions={<Badge color="green">Live data</Badge>} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Today's Sales" value={overview.data ? formatMoney(overview.data.todaySales) : "—"} hint={`${overview.data?.todayTransactions ?? 0} transactions`} />
+        <StatCard
+          label="Today's Sales"
+          value={overview.data ? formatMoney(overview.data.todaySales) : "—"}
+          hint={
+            <>
+              {overview.data?.todayTransactions ?? 0} transactions
+              {overview.data && yesterday ? (
+                <>
+                  {" · "}
+                  <TrendDelta today={overview.data.todaySales} previous={yesterday.total} />
+                </>
+              ) : null}
+            </>
+          }
+        />
         <StatCard label="Inventory Value" value={overview.data ? formatMoney(overview.data.totalInventoryValue) : "—"} hint={`${overview.data?.totalUnits ?? 0} units`} />
         <StatCard label="Active Stores" value={overview.data?.activeStores ?? "—"} />
         <StatCard label="Low Stock" value={overview.data?.lowStock ?? "—"} hint={`${overview.data?.outOfStock ?? 0} out of stock`} />
@@ -131,10 +152,10 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <AlertChip active={overview.data && overview.data.lowStock > 0} label={`${overview.data?.lowStock ?? 0} low stock`} color="amber" />
-            <AlertChip active={overview.data && overview.data.outOfStock > 0} label={`${overview.data?.outOfStock ?? 0} out of stock`} color="red" />
+            <AlertChip active={overview.data && overview.data.lowStock > 0} label={`${overview.data?.lowStock ?? 0} low stock`} color="amber" href="/inventory?stockStatus=LOW_STOCK" />
+            <AlertChip active={overview.data && overview.data.outOfStock > 0} label={`${overview.data?.outOfStock ?? 0} out of stock`} color="red" href="/inventory?stockStatus=OUT_OF_STOCK" />
             <AlertChip active={overview.data && overview.data.pendingTransfers > 0} label={`${overview.data?.pendingTransfers ?? 0} pending transfers`} color="blue" />
-            <AlertChip active={overview.data && overview.data.failedEvents > 0} label={`${overview.data?.failedEvents ?? 0} failed events`} color="red" />
+            <AlertChip active={overview.data && overview.data.failedEvents > 0} label={`${overview.data?.failedEvents ?? 0} failed events`} color="red" href="/transactions?status=FAILED" />
           </div>
         </CardContent>
       </Card>
@@ -142,33 +163,42 @@ export default function DashboardPage() {
   );
 }
 
-function AlertChip({ active, label, color }: { active: boolean | undefined; label: string; color: "amber" | "red" | "blue" }) {
+function TrendDelta({ today, previous }: { today: number; previous: number }) {
+  if (previous <= 0) {
+    return <span className="text-zinc-500">vs {formatMoney(previous)} yesterday</span>;
+  }
+  const pct = ((today - previous) / previous) * 100;
+  if (Math.abs(pct) < 0.5) {
+    return <span className="text-zinc-500">flat vs yesterday</span>;
+  }
+  const up = pct > 0;
+  return (
+    <span className={up ? "font-medium text-emerald-600" : "font-medium text-red-600"}>
+      {up ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}% vs yesterday
+    </span>
+  );
+}
+
+function AlertChip({ active, label, color, href }: { active: boolean | undefined; label: string; color: "amber" | "red" | "blue"; href?: string }) {
   const tones = {
     amber: "border-amber-200 bg-amber-50 text-amber-800",
     red: "border-red-200 bg-red-50 text-red-800",
     blue: "border-sky-200 bg-sky-50 text-sky-800",
   };
-  return (
-    <div className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-semibold ${active ? tones[color] : "border-zinc-200 bg-zinc-50 text-zinc-500"}`}>
+  const className = `flex items-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-semibold ${active ? tones[color] : "border-zinc-200 bg-zinc-50 text-zinc-500"}`;
+  const content = (
+    <>
       <span className={`h-1.5 w-1.5 rounded-full ${active ? color === "red" ? "bg-red-500" : color === "amber" ? "bg-amber-500" : "bg-sky-500" : "bg-zinc-300"}`} />
       {label}
-    </div>
+    </>
   );
+  if (href && active) {
+    return (
+      <Link href={href} className={`${className} transition-shadow hover:shadow-sm hover:underline`}>
+        {content}
+      </Link>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }
 
-function SalesBarChart({ data }: { data: SalesByDay[] }) {
-  const max = Math.max(...data.map((d) => d.total), 1);
-  return (
-    <div className="flex h-40 items-end gap-1">
-      {data.map((d) => (
-        <div key={d.day} className="group relative flex h-full flex-1 items-end">
-          <div
-            className="w-full rounded-t-sm bg-teal-600 transition-colors group-hover:bg-teal-700"
-            style={{ height: `${Math.max((d.total / max) * 100, 2)}%` }}
-            title={`${d.day}: ${formatMoney(d.total)}`}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}

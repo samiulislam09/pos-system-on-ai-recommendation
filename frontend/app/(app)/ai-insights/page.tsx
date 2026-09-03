@@ -12,7 +12,7 @@ import {
   CardTitle,
   Empty,
   Input,
-  Loading,
+  TableSkeleton,
   PageHeader,
   Select,
   Table,
@@ -170,21 +170,27 @@ export default function AiInsightsPage() {
 
       <Card>
         <CardContent className="pt-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <Input
-              placeholder="Search product / SKU..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-xs"
-            />
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="max-w-xs">
-              <option value="">All statuses</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </Select>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full max-w-xs">
+              <label htmlFor="ai-search" className="mb-1 block text-xs font-medium text-zinc-500">Search</label>
+              <Input
+                id="ai-search"
+                placeholder="Product name or SKU..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="ai-status" className="mb-1 block text-xs font-medium text-zinc-500">Status</label>
+              <Select id="ai-status" value={status} onChange={(e) => setStatus(e.target.value)} className="max-w-xs">
+                <option value="">All statuses</option>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <div className="ml-auto flex flex-wrap gap-2">
               {STATUSES.filter((s) => counts[s]).map((s) => (
                 <span key={s} className="flex items-center gap-1.5 text-sm text-zinc-600">
@@ -204,47 +210,45 @@ export default function AiInsightsPage() {
         </CardHeader>
         <CardContent>
           {recommendations.isLoading ? (
-            <Loading />
+            <TableSkeleton />
           ) : filtered.length > 0 ? (
             <Table>
               <THead>
                 <TR>
                   <TH>Product</TH>
-                  <TH>SKU</TH>
+                  <TH>Status</TH>
                   <TH>Location</TH>
                   <TH className="text-right">Available</TH>
+                  <TH className="text-right">Order qty</TH>
                   <TH className="text-right">Forecast / day</TH>
                   <TH className="text-right">Days of stock</TH>
                   <TH className="text-right">Reorder point</TH>
                   <TH className="text-right">Shortage risk</TH>
-                  <TH className="text-right">Order qty</TH>
-                  <TH>Status</TH>
                 </TR>
               </THead>
               <TBody>
                 {filtered.map((r) => (
                   <TR key={`${r.productId}-${r.locationId}`}>
                     <TD>
-                      <div className="font-medium">{r.name ?? "—"}</div>
-                      <div className="text-xs text-zinc-500">
-                        model: {r.method ?? "—"}
+                      <div className="font-medium" title={r.method ? `Forecast model: ${r.method}` : undefined}>
+                        {r.name ?? "—"}
                       </div>
+                      <div className="font-mono text-xs text-zinc-500">{r.sku ?? "—"}</div>
                     </TD>
-                    <TD className="font-mono text-xs">{r.sku ?? "—"}</TD>
+                    <TD>
+                      <Badge color={STATUS_COLORS[r.status] ?? "zinc"}>{r.status}</Badge>
+                    </TD>
                     <TD>{r.locationName ?? "—"}</TD>
                     <TD className="text-right">{formatNumber(r.available)}</TD>
+                    <TD className="text-right font-semibold">
+                      {r.recommendedOrderQty > 0 ? formatNumber(r.recommendedOrderQty) : "—"}
+                    </TD>
                     <TD className="text-right">{r.avgDailyForecast.toFixed(1)}</TD>
                     <TD className="text-right">
                       {r.daysOfStock === null ? "∞" : r.daysOfStock.toFixed(1)}
                     </TD>
                     <TD className="text-right">{r.reorderPoint.toFixed(0)}</TD>
                     <TD className="text-right">{Math.round(r.shortageRisk * 100)}%</TD>
-                    <TD className="text-right font-semibold">
-                      {r.recommendedOrderQty > 0 ? formatNumber(r.recommendedOrderQty) : "—"}
-                    </TD>
-                    <TD>
-                      <Badge color={STATUS_COLORS[r.status] ?? "zinc"}>{r.status}</Badge>
-                    </TD>
                   </TR>
                 ))}
               </TBody>

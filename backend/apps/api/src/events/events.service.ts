@@ -269,8 +269,19 @@ export class EventsService {
           discount,
           tax,
           total,
-          paymentStatus: PaymentStatus.PENDING,
+          paymentStatus: input.payment ? PaymentStatus.PAID : PaymentStatus.PENDING,
           createdById: actor.id,
+          ...(input.payment
+            ? {
+                payments: {
+                  create: {
+                    method: input.payment.method,
+                    amount: total,
+                    status: PaymentStatus.PAID,
+                  },
+                },
+              }
+            : {}),
           items: {
             create: input.items.map((item) => {
               const product = productBySku.get(item.sku)!;

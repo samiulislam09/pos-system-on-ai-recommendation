@@ -32,6 +32,35 @@ describe("POS event validation", () => {
     ).toThrow();
   });
 
+  it("accepts an optional payment method without client-controlled amounts", () => {
+    const parsed = saleEventSchema.parse({
+      ...baseEvent,
+      type: "SALE",
+      items: [{ sku: "SKU-001", quantity: 1 }],
+      payment: { method: "CASH", amountTendered: 500 },
+    });
+    expect(parsed.payment).toEqual({ method: "CASH", amountTendered: 500 });
+  });
+
+  it("rejects unknown payment methods and client-set payment amounts", () => {
+    expect(() =>
+      saleEventSchema.parse({
+        ...baseEvent,
+        type: "SALE",
+        items: [{ sku: "SKU-001", quantity: 1 }],
+        payment: { method: "BARTER" },
+      }),
+    ).toThrow();
+    expect(() =>
+      saleEventSchema.parse({
+        ...baseEvent,
+        type: "SALE",
+        items: [{ sku: "SKU-001", quantity: 1 }],
+        payment: { method: "CASH", amount: 1 },
+      }),
+    ).toThrow();
+  });
+
   it("keeps priced return items valid", () => {
     expect(
       returnEventSchema.safeParse({

@@ -15,6 +15,7 @@ import {
   searchProducts,
   submitSale,
   type CartLine,
+  type PaymentMethod,
   type PendingSale,
   type Product,
   type SaleConfirmation,
@@ -47,11 +48,13 @@ async function processPendingSale(pending: PendingSale) {
 }
 
 export function PosWorkspace() {
-  const [storeId, setStoreId] = useState("");
+  const [selectedStoreId, setStoreId] = useState("");
   const [terminalId, setTerminalId] = useState("");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [amountTendered, setAmountTendered] = useState("");
   const [saleState, setSaleState] = useState<SaleState>("editing");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingSale | null>(null);
@@ -70,6 +73,10 @@ export function PosWorkspace() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  const stores = bootstrap.data?.stores ?? [];
+  // With a single store there is nothing to choose — start the sale there.
+  const storeId = selectedStoreId || (stores.length === 1 ? stores[0].id : "");
+
   const productsQuery = useQuery({
     queryKey: ["pos-products", storeId, debouncedQuery],
     queryFn: ({ signal }) => searchProducts(storeId, debouncedQuery, signal),
@@ -82,7 +89,6 @@ export function PosWorkspace() {
     retry: false,
   });
 
-  const stores = bootstrap.data?.stores ?? [];
   const activeStore = stores.find((store) => store.id === storeId);
   const activeTerminal = activeStore?.terminals.find((terminal) => terminal.id === terminalId);
   const products = productsQuery.data?.products ?? [];
@@ -178,6 +184,7 @@ export function PosWorkspace() {
 
   const beginSale = () => {
     if (submittingRef.current || locked || !storeId || cart.length === 0) return;
+    const tendered = paymentMethod === "CASH" ? Number.parseFloat(amountTendered) : NaN;
     const snapshot: PendingSale = Object.freeze({
       eventId: crypto.randomUUID(),
       type: "SALE",
@@ -185,6 +192,10 @@ export function PosWorkspace() {
       ...(terminalId ? { terminalId } : {}),
       timestamp: new Date().toISOString(),
       items: Object.freeze(cart.map((line) => Object.freeze({ sku: line.product.sku, quantity: line.quantity }))),
+      payment: Object.freeze({
+        method: paymentMethod,
+        ...(Number.isFinite(tendered) && tendered > 0 ? { amountTendered: Math.round(tendered * 100) / 100 } : {}),
+      }),
     });
     pendingRef.current = snapshot;
     setPending(snapshot);
@@ -225,6 +236,7 @@ export function PosWorkspace() {
     setConfirmation(null);
     setSaleState("editing");
     setQuery("");
+    setAmountTendered("");
   };
 
   if (confirmation && pending) {
@@ -262,6 +274,10 @@ export function PosWorkspace() {
           lines={cart}
           disabled={!storeId || locked}
           submitting={saleState === "submitting"}
+          paymentMethod={paymentMethod}
+          amountTendered={amountTendered}
+          onPaymentMethod={setPaymentMethod}
+          onAmountTendered={setAmountTendered}
           onQuantity={changeQuantity}
           onRemove={(sku) => setCart((current) => current.filter((line) => line.product.sku !== sku))}
           onClear={() => setCart([])}

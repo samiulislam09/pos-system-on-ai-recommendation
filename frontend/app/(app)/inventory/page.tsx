@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import {
@@ -11,7 +12,7 @@ import {
   CardTitle,
   Empty,
   Input,
-  Loading,
+  TableSkeleton,
   PageHeader,
   Select,
   Table,
@@ -51,8 +52,17 @@ interface Location {
 }
 
 export default function InventoryPage() {
+  return (
+    <Suspense>
+      <InventoryView />
+    </Suspense>
+  );
+}
+
+function InventoryView() {
+  const searchParams = useSearchParams();
   const [locationId, setLocationId] = useState("");
-  const [stockStatus, setStockStatus] = useState("");
+  const [stockStatus, setStockStatus] = useState(searchParams.get("stockStatus") ?? "");
   const [search, setSearch] = useState("");
 
   const locations = useQuery({
@@ -87,22 +97,31 @@ export default function InventoryPage() {
 
       <Card>
         <CardContent className="pt-5">
-          <div className="flex flex-wrap gap-3">
-            <Input placeholder="Search product / SKU..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-            <Select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="max-w-xs">
-              <option value="">All locations</option>
-              {locations.data?.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name} ({l.code})
-                </option>
-              ))}
-            </Select>
-            <Select value={stockStatus} onChange={(e) => setStockStatus(e.target.value)} className="max-w-xs">
-              <option value="">All stock statuses</option>
-              <option value="IN_STOCK">IN_STOCK</option>
-              <option value="LOW_STOCK">LOW_STOCK</option>
-              <option value="OUT_OF_STOCK">OUT_OF_STOCK</option>
-            </Select>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full max-w-xs">
+              <label htmlFor="inv-search" className="mb-1 block text-xs font-medium text-zinc-500">Search</label>
+              <Input id="inv-search" placeholder="Product name or SKU..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="inv-location" className="mb-1 block text-xs font-medium text-zinc-500">Location</label>
+              <Select id="inv-location" value={locationId} onChange={(e) => setLocationId(e.target.value)} className="max-w-xs">
+                <option value="">All locations</option>
+                {locations.data?.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name} ({l.code})
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label htmlFor="inv-status" className="mb-1 block text-xs font-medium text-zinc-500">Stock status</label>
+              <Select id="inv-status" value={stockStatus} onChange={(e) => setStockStatus(e.target.value)} className="max-w-xs">
+                <option value="">All stock statuses</option>
+                <option value="IN_STOCK">IN_STOCK</option>
+                <option value="LOW_STOCK">LOW_STOCK</option>
+                <option value="OUT_OF_STOCK">OUT_OF_STOCK</option>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -113,7 +132,7 @@ export default function InventoryPage() {
         </CardHeader>
         <CardContent>
           {inventory.isLoading ? (
-            <Loading />
+            <TableSkeleton />
           ) : filtered && filtered.length > 0 ? (
             <Table>
               <THead>
@@ -131,7 +150,11 @@ export default function InventoryPage() {
                   <TR key={`${r.productId}-${r.location.id}`}>
                     <TD>
                       <div className="font-medium">{r.product.name}</div>
-                      <div className="text-xs text-zinc-500">{r.product.brand?.name ?? "—"} · {r.product.category?.name ?? "—"}</div>
+                      {(r.product.brand || r.product.category) && (
+                        <div className="text-xs text-zinc-500">
+                          {[r.product.brand?.name, r.product.category?.name].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
                     </TD>
                     <TD className="font-mono text-xs">{r.product.sku}</TD>
                     <TD>{r.location.name}</TD>
@@ -143,7 +166,7 @@ export default function InventoryPage() {
               </TBody>
             </Table>
           ) : (
-            <Empty label="No inventory records" />
+            <Empty label="No inventory records" hint="Receive a purchase or adjust stock to create balances." />
           )}
         </CardContent>
       </Card>
