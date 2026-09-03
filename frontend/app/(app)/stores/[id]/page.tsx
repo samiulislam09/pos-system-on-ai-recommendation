@@ -24,7 +24,7 @@ import {
   formatNumber,
 } from "@/components/ui";
 import { AddTerminalAction, LocationAction, TerminalStatusAction } from "@/components/management/location-actions";
-import { SalesExport } from "@/components/management/sales-export";
+import { SalesCsvButton } from "@/components/management/sales-export";
 
 interface StoreDetail {
   id: string;
@@ -134,9 +134,9 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-3">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <CardTitle>Recent sales</CardTitle>
-          <SalesExport storeId={s.id} storeCode={s.code} />
+          <SalesCsvButton storeId={s.id} storeCode={s.code} />
         </CardHeader>
         <CardContent>
           {s.sales.length === 0 ? (
