@@ -14,6 +14,7 @@ import {
   PageHeader,
 } from "@/components/ui";
 import { LocationAction } from "@/components/management/location-actions";
+import { TodaySalesCsvButton } from "@/components/management/sales-export";
 
 interface Store {
   id: string;
@@ -63,6 +64,10 @@ export default function StoresPage() {
                     <span className="font-medium">{s._count.postTerminals}</span>
                   </div>
                 </div>
+                <TodaySalesCsvButton storeId={s.id} storeCode={s.code} />
+                <p className="mt-1.5 text-center text-xs text-zinc-400">
+                  Need a date range? Open the store for From/To export.
+                </p>
               </CardContent>
             </Card>
           ))}

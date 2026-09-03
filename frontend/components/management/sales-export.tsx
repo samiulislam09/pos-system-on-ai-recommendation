@@ -1,16 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { API_URL, getToken, refreshSession } from "@/lib/api";
 import { Button, Input } from "@/components/ui";
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { downloadSalesCsv, todayISO } from "@/lib/export";
 
 export function SalesExport({ storeId, storeCode }: { storeId: string; storeCode: string }) {
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
+  const [from, setFrom] = useState(todayISO);
+  const [to, setTo] = useState(todayISO);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const valid = Boolean(from && to && from <= to);
@@ -20,30 +16,7 @@ export function SalesExport({ storeId, storeCode }: { storeId: string; storeCode
     setBusy(true);
     setError("");
     try {
-      const params = new URLSearchParams({
-        storeId,
-        from: new Date(`${from}T00:00:00.000Z`).toISOString(),
-        to: new Date(`${to}T23:59:59.999Z`).toISOString(),
-      });
-      const request = (token: string | null) =>
-        fetch(`${API_URL}/sales/export?${params}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-      let res = await request(getToken());
-      if (res.status === 401) {
-        const fresh = await refreshSession();
-        if (fresh) res = await request(fresh);
-      }
-      if (!res.ok) throw new Error(`Export failed (HTTP ${res.status})`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `sales-${storeCode}-${from}${from === to ? "" : `_${to}`}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      await downloadSalesCsv({ storeId, storeCode, from, to });
     } catch (err) {
       setError(err instanceof Error ? err.message : "The export could not be downloaded.");
     } finally {
@@ -66,6 +39,35 @@ export function SalesExport({ storeId, storeCode }: { storeId: string; storeCode
       </Button>
       {!valid ? <p className="w-full text-xs text-red-600">The start date must not be after the end date.</p> : null}
       {error ? <p role="alert" className="w-full text-xs text-red-600">{error}</p> : null}
+    </div>
+  );
+}
+
+/** One-click export of today's sales — used on the store cards in the Locations list. */
+export function TodaySalesCsvButton({ storeId, storeCode }: { storeId: string; storeCode: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const download = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const day = todayISO();
+      await downloadSalesCsv({ storeId, storeCode, from: day, to: day });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The export could not be downloaded.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <Button variant="outline" className="w-full" disabled={busy} onClick={() => void download()}>
+        {busy ? "Preparing…" : "Today's sales CSV"}
+      </Button>
+      {error ? <p role="alert" className="mt-1 text-xs text-red-600">{error}</p> : null}
     </div>
   );
 }
