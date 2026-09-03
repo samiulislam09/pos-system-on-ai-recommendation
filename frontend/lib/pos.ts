@@ -70,7 +70,7 @@ export function getBootstrap(signal?: AbortSignal) {
 }
 
 export function searchProducts(storeId: string, query: string, signal?: AbortSignal) {
-  const params = new URLSearchParams({ storeId, q: query, limit: "25" });
+  const params = new URLSearchParams({ storeId, q: query, limit: "50" });
   return apiFetch<{ products: Product[] }>(`/pos/products?${params}`, { signal });
 }
 

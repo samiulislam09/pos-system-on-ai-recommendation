@@ -32,7 +32,7 @@ export function ProductSearch({
     <section aria-labelledby="catalog-heading" className="space-y-4">
       <div>
         <h2 id="catalog-heading" className="text-lg font-semibold text-zinc-950 dark:text-zinc-50">Find products</h2>
-        <p className="text-sm text-zinc-500">Scan a code or search by name or SKU.</p>
+        <p className="text-sm text-zinc-500">Browse the store&apos;s products, or scan a code / search to filter.</p>
       </div>
       <label className="block">
         <span className="sr-only">Search or scan a product</span>
@@ -50,7 +50,9 @@ export function ProductSearch({
       <div aria-live="polite" aria-busy={loading}>
         {loading ? <Loading label="Searching products..." /> : null}
         {error ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">Products could not be loaded. Check the connection and try again.</p> : null}
-        {!loading && !error && query.trim() && products.length === 0 ? <Empty label="No matching products" /> : null}
+        {!loading && !error && !disabled && products.length === 0 ? (
+          <Empty label={query.trim() ? "No matching products" : "No products in stock at this store"} />
+        ) : null}
         {!loading && !error && products.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => (

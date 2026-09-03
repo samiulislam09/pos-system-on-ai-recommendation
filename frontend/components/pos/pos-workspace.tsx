@@ -80,7 +80,7 @@ export function PosWorkspace() {
   const productsQuery = useQuery({
     queryKey: ["pos-products", storeId, debouncedQuery],
     queryFn: ({ signal }) => searchProducts(storeId, debouncedQuery, signal),
-    enabled: Boolean(storeId && debouncedQuery),
+    enabled: Boolean(storeId),
     retry: 1,
   });
 
