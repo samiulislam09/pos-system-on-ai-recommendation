@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma, SaleStatus } from "@inv/database";
 import { PrismaService } from "../prisma/prisma.service";
 import { notFound } from "../common/errors";
+import { buildSalesCsv } from "./csv.util";
 
 @Injectable()
 export class SalesService {
@@ -44,6 +45,36 @@ export class SalesService {
     ]);
 
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
+  async exportCsv(
+    organizationId: string,
+    filters: { storeId?: string; from?: string; to?: string },
+  ): Promise<string> {
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        organizationId,
+        ...(filters.storeId ? { storeId: filters.storeId } : {}),
+        ...(filters.from || filters.to
+          ? {
+              createdAt: {
+                ...(filters.from ? { gte: new Date(filters.from) } : {}),
+                ...(filters.to ? { lte: new Date(filters.to) } : {}),
+              },
+            }
+          : {}),
+      },
+      include: {
+        store: true,
+        terminal: true,
+        items: { include: { product: true } },
+        payments: true,
+      },
+      orderBy: { createdAt: "asc" },
+      // Safety cap — a store's date-range export; revisit if exports ever exceed this.
+      take: 50_000,
+    });
+    return buildSalesCsv(sales);
   }
 
   async get(organizationId: string, id: string) {

@@ -1,5 +1,6 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
-import { paginationSchema } from "@inv/validation";
+import { Controller, Get, Param, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
+import { paginationSchema, salesExportQuerySchema } from "@inv/validation";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { SalesService } from "./sales.service";
 import {
@@ -31,6 +32,25 @@ export class SalesController {
       from: query.from,
       to: query.to,
     });
+  }
+
+  // Declared before ":id" so "export" is not captured as a sale id.
+  @Get("export")
+  @RequirePermission("sales.read")
+  async export(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodValidationPipe(salesExportQuerySchema)) query: {
+      storeId?: string;
+      from?: string;
+      to?: string;
+    },
+    @Res() res: Response,
+  ) {
+    const csv = await this.salesService.exportCsv(user.organizationId!, query);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="sales-${stamp}.csv"`);
+    res.send(csv);
   }
 
   @Get(":id")
