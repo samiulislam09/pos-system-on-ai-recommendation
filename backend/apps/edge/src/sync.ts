@@ -3,6 +3,8 @@ import { EdgeDb } from "./db";
 export interface SyncConfig {
   apiUrl: string;
   token: string;
+  /** Service-account login; used to (re)acquire a JWT when the token is missing or expired. */
+  credentials?: { email: string; password: string };
   batchSize: number;
   maxRetryDelayMs: number;
 }
@@ -12,10 +14,36 @@ export interface SyncConfig {
  * The central API is idempotent keyed on `eventId`, so retries are safe.
  */
 export class SyncEngine {
+  private token: string;
+
   constructor(
     private readonly db: EdgeDb,
     private readonly config: SyncConfig,
-  ) {}
+  ) {
+    this.token = config.token;
+  }
+
+  private async login(): Promise<boolean> {
+    if (!this.config.credentials) return false;
+    try {
+      const res = await fetch(`${this.config.apiUrl}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.config.credentials),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        data?: { accessToken?: string };
+      };
+      if (res.ok && body.success && body.data?.accessToken) {
+        this.token = body.data.accessToken;
+        return true;
+      }
+    } catch {
+      // Fall through — the caller's backoff handles unreachable auth.
+    }
+    return false;
+  }
 
   async syncOnce(): Promise<{ synced: number; failed: number; skipped: number }> {
     const now = new Date();
@@ -36,7 +64,10 @@ export class SyncEngine {
     for (const event of events) {
       const attempt = event.attempts + 1;
       try {
-        const result = await this.push(event.payload);
+        let result = await this.push(event.payload);
+        if (!result.ok && (result.status === 401 || result.status === 403) && (await this.login())) {
+          result = await this.push(event.payload);
+        }
         if (result.ok) {
           this.db.markSynced(event.id, new Date());
           this.db.setState("lastSuccessfulSync", new Date().toISOString());
@@ -90,7 +121,7 @@ export class SyncEngine {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.token}`,
+          Authorization: `Bearer ${this.token}`,
         },
         body: payload,
         signal: controller.signal,

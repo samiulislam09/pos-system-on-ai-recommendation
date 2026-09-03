@@ -6,6 +6,8 @@ interface Env {
   EDGE_DB_PATH: string;
   EDGE_API_URL: string;
   EDGE_TERMINAL_TOKEN: string;
+  EDGE_LOGIN_EMAIL: string;
+  EDGE_LOGIN_PASSWORD: string;
   EDGE_SYNC_INTERVAL_MS: number;
   EDGE_MAX_RETRY_DELAY_MS: number;
   EDGE_PORT: number;
@@ -17,6 +19,8 @@ function loadEnv(): Env {
     EDGE_DB_PATH: process.env.EDGE_DB_PATH ?? "./data/edge.sqlite",
     EDGE_API_URL: process.env.EDGE_API_URL ?? "http://localhost:4000/api/v1",
     EDGE_TERMINAL_TOKEN: process.env.EDGE_TERMINAL_TOKEN ?? "",
+    EDGE_LOGIN_EMAIL: process.env.EDGE_LOGIN_EMAIL ?? "",
+    EDGE_LOGIN_PASSWORD: process.env.EDGE_LOGIN_PASSWORD ?? "",
     EDGE_SYNC_INTERVAL_MS: parseInt(process.env.EDGE_SYNC_INTERVAL_MS ?? "15000", 10),
     EDGE_MAX_RETRY_DELAY_MS: parseInt(process.env.EDGE_MAX_RETRY_DELAY_MS ?? "60000", 10),
     EDGE_PORT: parseInt(process.env.EDGE_PORT ?? "5100", 10),
@@ -31,6 +35,9 @@ async function main() {
   const sync = new SyncEngine(db, {
     apiUrl: env.EDGE_API_URL,
     token: env.EDGE_TERMINAL_TOKEN,
+    ...(env.EDGE_LOGIN_EMAIL && env.EDGE_LOGIN_PASSWORD
+      ? { credentials: { email: env.EDGE_LOGIN_EMAIL, password: env.EDGE_LOGIN_PASSWORD } }
+      : {}),
     batchSize: env.EDGE_BATCH_SIZE,
     maxRetryDelayMs: env.EDGE_MAX_RETRY_DELAY_MS,
   });

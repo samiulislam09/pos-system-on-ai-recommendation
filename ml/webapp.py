@@ -177,13 +177,20 @@ def _run_pipeline_thread():
         _state["returncode"] = proc.returncode
 
 
-@app.post("/run")
-def run():
+def start_run() -> bool:
+    """Kick off a pipeline run unless one is already in progress."""
     with _lock:
         if _state["running"]:
-            return jsonify({"started": False, "reason": "already running"})
+            return False
         _state.update(running=True, log="", returncode=None)
     threading.Thread(target=_run_pipeline_thread, daemon=True).start()
+    return True
+
+
+@app.post("/run")
+def run():
+    if not start_run():
+        return jsonify({"started": False, "reason": "already running"})
     return jsonify({"started": True})
 
 
@@ -197,5 +204,14 @@ if __name__ == "__main__":
     port = int(os.getenv("WEBAPP_PORT", "5001"))
     # 0.0.0.0 inside Docker so the API container can reach us; localhost on host.
     host = os.getenv("WEBAPP_HOST", "127.0.0.1")
+
+    # Nightly MLOps retrain: set RETRAIN_AT=HH:MM to retrain daily (empty = off).
+    retrain_at = os.getenv("RETRAIN_AT", "").strip()
+    if retrain_at:
+        from scheduler import start_retrain_scheduler
+
+        start_retrain_scheduler(retrain_at, start_run)
+        print(f"Nightly retrain scheduled daily at {retrain_at}")
+
     print(f"Dashboard: http://localhost:{port}")
     app.run(host=host, port=port, debug=False)

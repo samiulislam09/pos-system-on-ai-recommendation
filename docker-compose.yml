@@ -105,6 +105,37 @@ services:
         condition: service_completed_successfully
 
   # ---------------------------------------------------------------------------
+  # Per-store offline-first agent: buffers POS events in local SQLite and
+  # syncs them to the central API with retry/backoff. POST events to :5100.
+  # ---------------------------------------------------------------------------
+  edge:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: inventory-edge
+    restart: unless-stopped
+    command: ["npm", "run", "dev:edge"]
+    environment:
+      NODE_ENV: development
+      EDGE_DB_PATH: /data/edge.sqlite
+      EDGE_API_URL: http://api:4000/api/v1
+      EDGE_LOGIN_EMAIL: ${EDGE_LOGIN_EMAIL:-admin@demo.com}
+      EDGE_LOGIN_PASSWORD: ${EDGE_LOGIN_PASSWORD:-admin123}
+      EDGE_PORT: "5100"
+    ports:
+      - "5100:5100"
+    volumes:
+      - ./backend:/app
+      - backend_root_modules:/app/node_modules
+      - backend_api_modules:/app/apps/api/node_modules
+      - backend_worker_modules:/app/apps/worker/node_modules
+      - backend_edge_modules:/app/apps/edge/node_modules
+      - edge_data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
   # AI/ML pipeline (Prophet + LightGBM) with its own small dashboard on :5001.
   # The api proxies /ai/run and /ai/run/status here.
   # ---------------------------------------------------------------------------
@@ -116,6 +147,8 @@ services:
     environment:
       DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory_platform
       REDIS_URL: redis://redis:6379
+      # Nightly MLOps retrain (container-local time); set empty to disable.
+      RETRAIN_AT: ${RETRAIN_AT:-02:00}
     ports:
       - "5001:5001"
     volumes:
@@ -151,6 +184,7 @@ services:
         condition: service_started
 
 volumes:
+  edge_data:
   backend_root_modules:
   backend_api_modules:
   backend_worker_modules:

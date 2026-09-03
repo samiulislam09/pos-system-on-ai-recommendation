@@ -150,12 +150,9 @@ docker compose exec ml python seed_demo_data.py --clean
 ```
 
 Once real sales accumulate (60+ days per product), stop seeding — the
-models retrain from scratch on real data every run. For automatic nightly
-retraining, add a cron entry on the host:
-
-```bash
-0 2 * * * cd /path/to/pos && docker compose exec -T ml python run_pipeline.py >> ml/reports/pipeline.log 2>&1
-```
+models retrain from scratch on real data every run. The `ml` container
+also retrains automatically every night at 02:00 (container time); change
+or disable it with `RETRAIN_AT` in `.env` (e.g. `RETRAIN_AT=` to turn off).
 
 ---
 
@@ -181,6 +178,7 @@ into its image — after editing `ml/`, run
 | http://localhost:3001 | Web app (POS, inventory, reports, AI Insights) |
 | http://localhost:4000/api/v1 | REST API (JWT auth) |
 | http://localhost:5001 | Standalone ML dashboard |
+| http://localhost:5100 | Edge agent (per-store offline buffer): `GET /status`, `POST /events` |
 | localhost:5432 | PostgreSQL (`inventory` / `inventory`, db `inventory_platform`) |
 | localhost:6379 | Redis |
 
@@ -275,6 +273,12 @@ transparently refreshes on 401 (single-flight, then redirect to `/login`).
   `eventId` (`TransactionEvent` table); replays return the original result,
   which is what makes both the web POS retry flow and the edge agent's
   at-least-once sync safe.
+- **The edge agent runs in the stack**: POST POS events to
+  `http://localhost:5100/events` and they are buffered in local SQLite
+  (`PENDING`) and pushed to the central API with retry/backoff — even if
+  the API is down when the sale happens. It authenticates with the service
+  login from `EDGE_LOGIN_EMAIL`/`EDGE_LOGIN_PASSWORD` and re-logs-in on
+  token expiry.
 - **Critical writes are synchronous**: inventory-affecting operations run
   in the API's transaction path; only non-critical work (reconciliation,
   alerts, aggregates) goes through BullMQ, and the API degrades gracefully
