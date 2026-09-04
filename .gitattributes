@@ -1,0 +1,42 @@
+# Line-ending policy.
+#
+# Every service in this project runs in a Linux container, and `dev-init.sh` is
+# bind-mounted from the host and executed by `sh` inside that container. Git for
+# Windows defaults to core.autocrlf=true, so without the rules below a Windows
+# checkout rewrites that script to CRLF and the container dies immediately with:
+#
+#     /app/infrastructure/docker/dev-init.sh: 5: set: Illegal option -
+#     service "backend-init" didn't complete successfully: exit 2
+#
+# Because api and worker both wait on `backend-init` completing successfully,
+# that one stray carriage return takes the whole stack down.
+
+# Store text with LF in the repository and check it out with LF everywhere.
+* text=auto eol=lf
+
+# Executed or parsed by Linux tooling — must never become CRLF.
+*.sh         text eol=lf
+Dockerfile   text eol=lf
+Dockerfile.* text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.sql        text eol=lf
+
+# Windows-native scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Never transform binaries.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.zip   binary
+*.gz    binary
