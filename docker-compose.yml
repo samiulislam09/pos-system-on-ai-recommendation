@@ -21,7 +21,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     container_name: inventory-backend-init
-    command: ["sh", "/app/infrastructure/docker/dev-init.sh"]
+    # Copy the script to /tmp with any CR stripped before running it. .gitattributes
+    # keeps it LF for fresh clones, but a checkout made before that file existed
+    # still has CRLF on disk, and dash rejects `set -e\r` with exit 2.
+    command:
+      - sh
+      - -c
+      - >-
+        tr -d '\r' < /app/infrastructure/docker/dev-init.sh > /tmp/dev-init.sh
+        && sh /tmp/dev-init.sh
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory_platform
