@@ -1,5 +1,4 @@
 import { PrismaClient, EntityStatus, SaleStatus, PaymentStatus, PaymentMethod, PurchaseOrderStatus, TransferStatus, AdjustmentReason, MovementType } from "@prisma/client";
-import { faker } from "@faker-js/faker";
 
 const prisma = new PrismaClient();
 const PREFIX = "TEMP";
@@ -120,7 +119,19 @@ function randomSku(index: number): string {
 }
 
 function randomBarcode(): string {
-  return faker.string.numeric(13);
+  let code = "";
+  for (let i = 0; i < 13; i++) code += rand(0, 9);
+  return code;
+}
+
+function pickRandom<T>(arr: T[], count: number): T[] {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+function fakeAddress(): string {
+  const streets = ["Main St", "Oak Ave", "Park Rd", "Lake Blvd", "Hill St", "River Rd", "Sunset Dr", "King Rd", "Queen St", "Market Ln"];
+  return `${rand(1, 999)} ${randChoice(["North", "South", "East", "West", ""])} ${randChoice(streets)}`.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +281,7 @@ async function seed() {
         contactName: s.contact,
         phone: s.phone,
         email: `${s.name.toLowerCase().replace(/\s+/g, "")}@example.com`,
-        address: faker.location.streetAddress(),
+        address: fakeAddress(),
       },
     });
     supplierIds.push(supplier.id);
@@ -333,7 +344,7 @@ async function seed() {
   for (let i = 0; i < poCount; i++) {
     const supplierId = randChoice(supplierIds);
     const productCount = rand(5, 10);
-    const selectedProducts = faker.helpers.arrayElements(productIds, productCount);
+    const selectedProducts = pickRandom(productIds, productCount);
 
     let totalAmount = 0;
     const itemsData = [];
@@ -437,7 +448,7 @@ async function seed() {
   for (let i = 0; i < saleCount; i++) {
     const store = randChoice(stores);
     const itemCount = rand(1, 5);
-    const selectedProducts = faker.helpers.arrayElements(productIds, itemCount);
+    const selectedProducts = pickRandom(productIds, itemCount);
 
     let subtotal = 0;
     const saleItemsData = [];
@@ -522,7 +533,7 @@ async function seed() {
     const src = i % 2 === 0 ? warehouse : randChoice(stores);
     const dst = src.id === warehouse.id ? randChoice(stores) : warehouse;
     const productCount = rand(2, 5);
-    const selectedProducts = faker.helpers.arrayElements(productIds, productCount);
+    const selectedProducts = pickRandom(productIds, productCount);
 
     const itemsData = [];
     for (const prodId of selectedProducts) {
@@ -587,7 +598,7 @@ async function seed() {
   for (let i = 0; i < adjustmentCount; i++) {
     const store = randChoice([...stores, warehouse]);
     const productCount = rand(1, 3);
-    const selectedProducts = faker.helpers.arrayElements(productIds, productCount);
+    const selectedProducts = pickRandom(productIds, productCount);
     const reason = randChoice([
       AdjustmentReason.DAMAGED, AdjustmentReason.LOST, AdjustmentReason.STOCK_COUNT_VARIANCE,
     ]);
