@@ -8,10 +8,19 @@ ENV NODE_ENV=development
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# The stamp lets the entrypoint detect a node_modules volume that no longer
+# matches the lockfile (named volumes are seeded only on first creation).
+RUN npm ci && md5sum package-lock.json | cut -d' ' -f1 > node_modules/.package-lock.md5
 
 COPY . .
 
+# The entrypoint must live outside /app because compose bind-mounts the host
+# checkout over it. Strip CR so checkouts made before .gitattributes existed
+# (Git for Windows, core.autocrlf=true) still produce a runnable script.
+RUN tr -d '\r' < docker-entrypoint.dev.sh > /usr/local/bin/web-dev-entrypoint \
+  && chmod +x /usr/local/bin/web-dev-entrypoint
+
 EXPOSE 3000
+ENTRYPOINT ["web-dev-entrypoint"]
 # `next dev` already binds 0.0.0.0 by default; -H is explicit for clarity.
 CMD ["npx", "next", "dev", "-H", "0.0.0.0", "-p", "3000"]
