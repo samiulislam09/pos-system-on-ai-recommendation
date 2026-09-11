@@ -356,6 +356,79 @@ export const approveReturnSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Supplier portal
+// ---------------------------------------------------------------------------
+
+export const supplierLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const createSupplierUserSchema = z.object({
+  name: z.string().min(1).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+  phone: z.string().max(32).optional(),
+  supplierId: cuid.optional(),
+});
+
+export const supplierUploadSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  content: z.string().min(10),
+});
+
+export const supplierUploadItemSchema = z.object({
+  poNumber: z.string().min(1),
+  vendorId: z.string().default(""),
+  vendorName: z.string().default(""),
+  sku: z.string().min(1),
+  itemDescription: z.string().min(1),
+  category: z.string().default(""),
+  orderQty: z.number().int().nonnegative().default(0),
+  unitPriceBdt: z.coerce.number().nonnegative().multipleOf(0.01).default(0),
+  totalAmountBdt: z.coerce.number().nonnegative().multipleOf(0.01).default(0),
+  orderDate: z.string().default(""),
+  deliveryDate: z.string().default(""),
+  status: z.string().default(""),
+});
+
+export const supplierResubmitSchema = z.object({
+  content: z.string().min(10),
+});
+
+export const supplierUploadItemUpdateSchema = z.object({
+  id: cuid.optional(),
+  poNumber: z.string().min(1).optional(),
+  vendorId: z.string().optional(),
+  vendorName: z.string().optional(),
+  sku: z.string().min(1).optional(),
+  itemDescription: z.string().min(1).optional(),
+  category: z.string().optional(),
+  orderQty: z.number().int().nonnegative().optional(),
+  unitPriceBdt: z.coerce.number().nonnegative().multipleOf(0.01).optional(),
+  totalAmountBdt: z.coerce.number().nonnegative().multipleOf(0.01).optional(),
+  orderDate: z.string().optional(),
+  deliveryDate: z.string().optional(),
+  status: z.string().optional(),
+});
+
+export const resubmitWithEditsSchema = z.object({
+  items: z.array(supplierUploadItemUpdateSchema).min(1),
+});
+
+export const fixSupplierUploadSchema = z.object({
+  items: z.array(supplierUploadItemUpdateSchema).min(1),
+});
+
+export const acceptSupplierUploadSchema = z.object({
+  locationId: cuid,
+});
+
+export const rejectSupplierUploadSchema = z.object({
+  note: z.string().min(1).max(2000),
+});
+
+// ---------------------------------------------------------------------------
 // Pagination
 // ---------------------------------------------------------------------------
 
@@ -393,3 +466,12 @@ export type ReceivePurchaseOrderInput = z.infer<typeof receivePurchaseOrderSchem
 export type CreateTransferInput = z.infer<typeof createTransferSchema>;
 export type ReceiveTransferInput = z.infer<typeof receiveTransferSchema>;
 export type ApproveReturnInput = z.infer<typeof approveReturnSchema>;
+export type SupplierLoginInput = z.infer<typeof supplierLoginSchema>;
+export type CreateSupplierUserInput = z.infer<typeof createSupplierUserSchema>;
+export type SupplierUploadInput = z.infer<typeof supplierUploadSchema>;
+export type SupplierUploadItemUpdateInput = z.infer<typeof supplierUploadItemUpdateSchema>;
+export type SupplierResubmitInput = z.infer<typeof supplierResubmitSchema>;
+export type ResubmitWithEditsInput = z.infer<typeof resubmitWithEditsSchema>;
+export type FixSupplierUploadInput = z.infer<typeof fixSupplierUploadSchema>;
+export type AcceptSupplierUploadInput = z.infer<typeof acceptSupplierUploadSchema>;
+export type RejectSupplierUploadInput = z.infer<typeof rejectSupplierUploadSchema>;

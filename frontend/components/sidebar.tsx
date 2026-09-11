@@ -11,6 +11,8 @@ const NAV: Array<{ href: string; label: string; icon: IconName; group: "Workspac
   { href: "/pos", label: "Point of sale", icon: "pos", group: "Workspace" },
   { href: "/inventory", label: "Inventory", icon: "inventory", group: "Operations" },
   { href: "/products", label: "Products", icon: "products", group: "Operations" },
+  { href: "/supplier-uploads", label: "Supplier uploads", icon: "uploads", group: "Operations" },
+  { href: "/suppliers", label: "Suppliers", icon: "suppliers", group: "Operations" },
   { href: "/stores", label: "Locations", icon: "stores", group: "Operations" },
   { href: "/transactions", label: "Transactions", icon: "transactions", group: "Operations" },
   { href: "/reports", label: "Reports", icon: "reports", group: "Operations" },

@@ -20,6 +20,7 @@ import { HealthModule } from "./health/health.module";
 import { QueueModule } from "./queue/queue.module";
 import { PosModule } from "./pos/pos.module";
 import { AiModule } from "./ai/ai.module";
+import { SupplierPortalModule } from "./supplier-portal/supplier-portal.module";
 import { GlobalExceptionFilter } from "./common/filters/global-exception.filter";
 import { ResponseInterceptor } from "./common/interceptors/response.interceptor";
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
@@ -51,6 +52,7 @@ import { PermissionsGuard } from "./common/guards/permissions.guard";
     QueueModule,
     PosModule,
     AiModule,
+    SupplierPortalModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },

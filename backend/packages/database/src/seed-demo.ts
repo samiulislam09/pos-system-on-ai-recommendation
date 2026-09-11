@@ -347,7 +347,13 @@ async function seed() {
     const selectedProducts = pickRandom(productIds, productCount);
 
     let totalAmount = 0;
-    const itemsData = [];
+    const itemsData: Array<{
+      productId: string;
+      quantity: number;
+      receivedQuantity: number;
+      unitCost: number;
+      total: number;
+    }> = [];
 
     for (const prodId of selectedProducts) {
       const prod = await prisma.product.findUnique({ where: { id: prodId } });

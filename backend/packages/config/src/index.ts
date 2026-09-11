@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   purchases_create: "purchases.create",
   purchases_receive: "purchases.receive",
   suppliers_manage: "suppliers.manage",
+  supplier_uploads_manage: "supplier-uploads.manage",
   reports_read: "reports.read",
   users_manage: "users.manage",
   stores_manage: "stores.manage",
@@ -48,6 +49,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.purchases_create,
     PERMISSIONS.purchases_receive,
     PERMISSIONS.suppliers_manage,
+    PERMISSIONS.supplier_uploads_manage,
     PERMISSIONS.reports_read,
     PERMISSIONS.stores_manage,
   ],
@@ -63,6 +65,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.transfers_receive,
     PERMISSIONS.purchases_create,
     PERMISSIONS.purchases_receive,
+    PERMISSIONS.supplier_uploads_manage,
     PERMISSIONS.reports_read,
   ],
   INVENTORY_MANAGER: [
@@ -78,6 +81,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     PERMISSIONS.purchases_create,
     PERMISSIONS.purchases_receive,
     PERMISSIONS.suppliers_manage,
+    PERMISSIONS.supplier_uploads_manage,
     PERMISSIONS.reports_read,
   ],
   CASHIER: [
