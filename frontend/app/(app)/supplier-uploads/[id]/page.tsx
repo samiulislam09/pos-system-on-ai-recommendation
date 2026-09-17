@@ -306,6 +306,12 @@ export default function VendorUploadDetailPage({ params }: { params: Promise<{ i
                 {acceptResult.skippedCount} row(s) were skipped (missing SKU or quantity ≤ 0).
               </p>
             )}
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-emerald-300 bg-white/70 p-3 text-xs text-emerald-800">
+              <span>🤖 AI inventory forecasting & shortage models have been automatically triggered to retrain with this new stock data.</span>
+              <Link href="/ai-insights" className="font-semibold text-emerald-700 hover:text-emerald-900 underline ml-2">
+                View AI Insights &rarr;
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}

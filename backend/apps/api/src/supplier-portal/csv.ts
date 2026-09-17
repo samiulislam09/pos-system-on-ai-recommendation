@@ -192,5 +192,24 @@ export function parseShipmentCsv(fileName: string, content: string): ParsedCsvSh
     }
   });
 
+  // Check for duplicate SKUs / duplicate (po_number, sku) lines in the batch
+  const seenSkuMap = new Map<string, number>();
+  rows.forEach((row, idx) => {
+    const lineNumber = idx + 2;
+    const sku = row.sku.trim().toUpperCase();
+    if (!sku) return;
+
+    if (seenSkuMap.has(sku)) {
+      const prevLine = seenSkuMap.get(sku)!;
+      issues.push({
+        row: lineNumber,
+        field: "sku",
+        message: `Duplicate SKU "${row.sku}" found in upload (already appears on row ${prevLine})`,
+      });
+    } else {
+      seenSkuMap.set(sku, lineNumber);
+    }
+  });
+
   return { rows, issues, missingFields };
 }

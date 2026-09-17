@@ -94,8 +94,10 @@ export class SupplierUploadsService {
     const auto = await this.autoResolveMissing(supplier.organizationId, parsed.rows, parsed.missingFields);
     const missingFields = auto.missingFields;
     const issues = parsed.issues.filter((i) => !auto.resolvedKeys.has(`${i.row}:${i.field}`));
+    const duplicateIssues = issues.filter((i) => i.message.toLowerCase().includes("duplicate"));
     const hasMissing = missingFields.length > 0;
-    const uploadStatus = hasMissing
+    const hasDuplicates = duplicateIssues.length > 0;
+    const uploadStatus = (hasMissing || hasDuplicates)
       ? SupplierUploadStatus.INCOMPLETE
       : SupplierUploadStatus.PENDING;
 
@@ -136,20 +138,30 @@ export class SupplierUploadsService {
         include: { items: true },
       });
 
-      if (hasMissing) {
+      if (hasMissing || hasDuplicates) {
         const totalMissing = missingFields.reduce((sum, mf) => sum + mf.fields.length, 0);
         const affectedRows = missingFields.length;
         const autoNote =
           auto.autoFixed > 0
             ? ` (${auto.autoFixed} missing value(s) were auto-filled from the file data or product catalog)`
             : "";
+        
+        let issueMsg = `Your file "${input.fileName}" requires correction before vendor review:`;
+        if (hasMissing && hasDuplicates) {
+          issueMsg += ` ${totalMissing} missing field(s) across ${affectedRows} row(s) and ${duplicateIssues.length} duplicate SKU row(s) were detected.${autoNote}`;
+        } else if (hasMissing) {
+          issueMsg += ` ${totalMissing} missing value(s) across ${affectedRows} row(s) could not be auto-filled.${autoNote}`;
+        } else {
+          issueMsg += ` ${duplicateIssues.length} duplicate SKU row(s) were detected.`;
+        }
+        
         await tx.supplierNotification.create({
           data: {
             organizationId: supplier.organizationId,
             supplierUserId: supplier.id,
             uploadId: created.id,
             type: "UPLOAD_RECEIVED",
-            message: `Your file "${input.fileName}" has ${totalMissing} missing value(s) across ${affectedRows} row(s) that could not be auto-filled. Please fill in the missing fields before the vendor can review.${autoNote}`,
+            message: `${issueMsg} Please correct the flagged items so the vendor can review.`,
           },
         });
       } else {

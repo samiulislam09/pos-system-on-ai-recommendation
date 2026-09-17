@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AuditModule } from "../audit/audit.module";
+import { AiModule } from "../ai/ai.module";
 import { InventoryEngine } from "../inventory/inventory-engine.service";
 import { SupplierAuthService } from "./supplier-auth.service";
 import { SupplierAuthController } from "./supplier-auth.controller";
@@ -13,7 +14,7 @@ import { SupplierUploadsService } from "./supplier-uploads.service";
 import { SupplierUploadsController } from "./supplier-uploads.controller";
 
 @Module({
-  imports: [ConfigModule, AuditModule, PassportModule, JwtModule.register({})],
+  imports: [ConfigModule, AuditModule, AiModule, PassportModule, JwtModule.register({})],
   controllers: [
     SupplierAuthController,
     SupplierPortalController,

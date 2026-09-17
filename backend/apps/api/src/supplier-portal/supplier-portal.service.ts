@@ -5,6 +5,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { InventoryEngine } from "../inventory/inventory-engine.service";
 import { TenantService } from "../common/tenant.service";
 import { AuditService } from "../audit/audit.service";
+import { AiService } from "../ai/ai.service";
 import { invalidOperation, notFound, tenantMismatch } from "../common/errors";
 import type {
   AcceptSupplierUploadInput,
@@ -20,6 +21,7 @@ export class SupplierPortalService {
     private readonly engine: InventoryEngine,
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
+    private readonly ai: AiService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -193,6 +195,12 @@ export class SupplierPortalService {
         existingProducts,
         skippedCount: items.length - validItems.length,
       };
+    });
+
+    // Asynchronously trigger ML demand forecast & shortage retraining
+    this.ai.runPipeline().catch((err) => {
+      // Non-blocking: log pipeline trigger status if ML service is offline
+      console.warn("Auto-trigger ML pipeline after supplier upload acceptance:", err?.message || err);
     });
 
     return result;
