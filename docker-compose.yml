@@ -29,7 +29,8 @@ services:
       - -c
       - >-
         tr -d '\r' < /app/infrastructure/docker/dev-init.sh > /tmp/dev-init.sh
-        && sh /tmp/dev-init.sh
+        && chmod +x /tmp/dev-init.sh
+        && /bin/sh /tmp/dev-init.sh
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://inventory:inventory@postgres:5432/inventory_platform
