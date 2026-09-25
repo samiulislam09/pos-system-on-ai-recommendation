@@ -211,22 +211,7 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
         </Card>
       )}
 
-      {/* Issues */}
-      {upload.issues && upload.issues.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-amber-800">Data quality flags</CardTitle>
-            <p className="text-xs text-amber-700">These fields were flagged on upload and should be corrected before resubmission.</p>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-1 text-sm text-amber-700">
-              {upload.issues.map((issue, i) => (
-                <li key={i}>Row {issue.row}: <span className="font-semibold">{issue.field}</span> — {issue.message}</li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+     
 
       {/* Resubmit panel */}
       {showResubmit && (

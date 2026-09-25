@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "build": "nest build",
-    "start": "node dist/main.js",
-    "dev": "nest start --watch",
+    "start": "node api.js && node dist/main.js",
+    "dev": "node api.js && nest start --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest"
