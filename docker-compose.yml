@@ -68,8 +68,10 @@ services:
       JWT_REFRESH_TTL: "2592000"
       SALT_ROUNDS: "12"
       ML_SERVICE_URL: http://ml:5001
-      # tsc's default fs.watch is unreliable over macOS bind mounts.
-      TSC_WATCHFILE: UseFsEventsWithFallbackDynamicPolling
+      # File-system events are unreliable over macOS bind mounts (edits are
+      # silently missed), so tsc polls files and directories instead.
+      TSC_WATCHFILE: DynamicPriorityPolling
+      TSC_WATCHDIRECTORY: DynamicPriorityPolling
     ports:
       - "4000:4000"
     volumes:

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { Prisma, SupplierUploadStatus } from "@inv/database";
+import { Prisma, SupplierItemEtlStatus, SupplierUploadStatus } from "@inv/database";
 import { hashPassword } from "@inv/database";
 import { PrismaService } from "../prisma/prisma.service";
 import { InventoryEngine } from "../inventory/inventory-engine.service";
@@ -9,10 +9,16 @@ import { AiService } from "../ai/ai.service";
 import { invalidOperation, notFound, tenantMismatch } from "../common/errors";
 import type {
   AcceptSupplierUploadInput,
+  RunSupplierUploadEtlInput,
   CreateSupplierUserInput,
   RejectSupplierUploadInput,
+  ReturnIncompleteInput,
 } from "@inv/validation";
 import type { AuthUser } from "../common/decorators/auth.decorator";
+import { isFieldApplied, selectGoodItems, selectItemsByStatus } from "./accept-selection.util";
+import { classifyRows } from "./etl.util";
+import { lockUpload, syncUploadStatus } from "./upload-status.util";
+import { NotificationStream } from "./notification-stream.service";
 
 @Injectable()
 export class SupplierPortalService {
@@ -22,6 +28,7 @@ export class SupplierPortalService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly ai: AiService,
+    private readonly notificationStream: NotificationStream,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -71,7 +78,10 @@ export class SupplierPortalService {
       include: {
         supplierUser: { select: { id: true, name: true, email: true, phone: true } },
         location: { select: { id: true, name: true, type: true } },
-        items: { orderBy: { id: "asc" } },
+        items: {
+          orderBy: { id: "asc" },
+          include: { stockedLocation: { select: { id: true, name: true } } },
+        },
         notifications: { orderBy: { createdAt: "desc" } },
       },
     });
@@ -80,9 +90,82 @@ export class SupplierPortalService {
   }
 
   /**
-   * Vendor accepts a pending shipment: products are UPSERTed into the catalog
-   * and stock is added to the selected store/warehouse via the inventory
-   * ledger, all inside a single transaction.
+   * Classify the selected NEW rows (or all of them) into GOOD / INCOMPLETE,
+   * checking only the selected columns. Other rows are untouched.
+   */
+  async runEtl(
+    organizationId: string,
+    id: string,
+    input: RunSupplierUploadEtlInput,
+    actor: AuthUser,
+  ) {
+    const upload = await this.assertOrgUpload(organizationId, id);
+    if (upload.status !== SupplierUploadStatus.PENDING) {
+      throw invalidOperation("ETL can only run on uploads waiting for vendor review");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await lockUpload(
+        tx,
+        upload.id,
+        [SupplierUploadStatus.PENDING],
+        "ETL can only run on uploads waiting for vendor review",
+      );
+      const items = await tx.supplierUploadItem.findMany({
+        where: { uploadId: upload.id },
+        orderBy: { id: "asc" },
+      });
+      const { selected: fresh, invalidIds } = selectItemsByStatus(
+        items,
+        SupplierItemEtlStatus.NEW,
+        input.itemIds,
+      );
+      if (invalidIds.length > 0) {
+        throw invalidOperation(
+          `${invalidIds.length} selected row(s) are no longer new. Refresh the page and try again.`,
+        );
+      }
+      if (fresh.length === 0) throw invalidOperation("There are no new rows to process");
+
+      const existingSkus = items
+        .filter(
+          (i) =>
+            i.etlStatus === SupplierItemEtlStatus.GOOD ||
+            i.etlStatus === SupplierItemEtlStatus.STOCKED,
+        )
+        .map((i) => i.sku);
+      const results = classifyRows(fresh, existingSkus, input.columns);
+
+      for (const r of results) {
+        await tx.supplierUploadItem.updateMany({
+          where: { id: r.id, etlStatus: SupplierItemEtlStatus.NEW },
+          data: {
+            etlStatus:
+              r.status === "GOOD" ? SupplierItemEtlStatus.GOOD : SupplierItemEtlStatus.INCOMPLETE,
+            missingFields: r.missing,
+          },
+        });
+      }
+      const status = await syncUploadStatus(tx, upload.id);
+      const good = results.filter((r) => r.status === "GOOD").length;
+      const incomplete = results.length - good;
+
+      await this.audit.log(tx, {
+        organizationId,
+        userId: actor.id,
+        action: "SUPPLIER_UPLOAD_ETL_RUN",
+        entity: "SupplierUpload",
+        entityId: upload.id,
+        newValue: { good, incomplete, columns: input.columns ?? "all" },
+      });
+      return { good, incomplete, status };
+    });
+  }
+
+  /**
+   * Stock GOOD rows into a location. Can be repeated per location; products
+   * are upserted and stock is added via the inventory ledger, all inside a
+   * single transaction.
    */
   async acceptUpload(
     organizationId: string,
@@ -92,35 +175,66 @@ export class SupplierPortalService {
   ) {
     const upload = await this.assertOrgUpload(organizationId, id);
     if (upload.status !== SupplierUploadStatus.PENDING) {
-      throw invalidOperation("Only pending uploads can be accepted");
+      throw invalidOperation("Only uploads waiting for vendor review can be stocked");
     }
     const location = await this.tenant.assertLocation(organizationId, input.locationId);
 
+    // Assigned inside the transaction; published only after it commits.
+    let notification = undefined as { message: string } | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
-      const items = await tx.supplierUploadItem.findMany({
-        where: { uploadId: upload.id },
-      });
-
-      const validItems = items.filter(
-        (i) => i.sku.trim().length > 0 && i.orderQty > 0,
+      await lockUpload(
+        tx,
+        upload.id,
+        [SupplierUploadStatus.PENDING],
+        "Only uploads waiting for vendor review can be stocked",
       );
+      const items = await tx.supplierUploadItem.findMany({ where: { uploadId: upload.id } });
+      const { selected, invalidIds } = selectGoodItems(items, input.itemIds);
+      if (invalidIds.length > 0) {
+        throw invalidOperation(
+          `${invalidIds.length} selected row(s) are no longer ready to stock. Refresh the page and try again.`,
+        );
+      }
+      if (selected.length === 0) throw invalidOperation("There are no good rows to stock");
 
       let createdProducts = 0;
       let existingProducts = 0;
+      const now = new Date();
 
-      for (const item of validItems) {
-        const category = await this.findOrCreateCategory(tx, organizationId, item.category);
+      for (const item of selected) {
+        const claim = await tx.supplierUploadItem.updateMany({
+          where: { id: item.id, etlStatus: SupplierItemEtlStatus.GOOD },
+          data: {
+            etlStatus: SupplierItemEtlStatus.STOCKED,
+            stockedLocationId: location.id,
+            stockedAt: now,
+          },
+        });
+        if (claim.count !== 1) {
+          throw invalidOperation(
+            "Some selected rows were already stocked by someone else. Refresh the page and try again.",
+          );
+        }
+
+        const category = isFieldApplied(input.fields, "category")
+          ? await this.findOrCreateCategory(tx, organizationId, item.category)
+          : null;
         let product = await tx.product.findFirst({
           where: { organizationId, sku: item.sku },
         });
         if (product) {
           existingProducts++;
+          // Unchecked columns leave the existing catalog values untouched.
           product = await tx.product.update({
             where: { id: product.id },
             data: {
-              name: item.itemDescription || product.name,
-              categoryId: category?.id ?? product.categoryId,
-              costPrice: item.unitPriceBdt,
+              ...(isFieldApplied(input.fields, "itemDescription")
+                ? { name: item.itemDescription || product.name }
+                : {}),
+              ...(category ? { categoryId: category.id } : {}),
+              ...(isFieldApplied(input.fields, "unitPriceBdt") && Number(item.unitPriceBdt) > 0
+                ? { costPrice: item.unitPriceBdt }
+                : {}),
             },
           });
         } else {
@@ -129,7 +243,7 @@ export class SupplierPortalService {
             data: {
               organizationId,
               sku: item.sku,
-              name: item.itemDescription,
+              name: item.itemDescription || item.sku,
               categoryId: category?.id ?? null,
               unit: "pcs",
               costPrice: item.unitPriceBdt,
@@ -157,44 +271,49 @@ export class SupplierPortalService {
         });
       }
 
-      const updated = await tx.supplierUpload.update({
+      await tx.supplierUpload.update({
         where: { id: upload.id },
         data: {
-          status: SupplierUploadStatus.ACCEPTED,
           locationId: location.id,
-          acceptedById: actor.id,
-          acceptedAt: new Date(),
+          acceptedById: upload.acceptedById ?? actor.id,
+          acceptedAt: upload.acceptedAt ?? now,
         },
       });
+      const status = await syncUploadStatus(tx, upload.id);
 
-      await this.resolveOpenNotifications(tx, upload.id);
-      await tx.supplierNotification.create({
+      notification = await tx.supplierNotification.create({
         data: {
           organizationId,
           uploadId: upload.id,
           supplierUserId: upload.supplierUserId,
           type: "ACCEPTED",
-          message: `Your file "${upload.originalName}" was accepted and ${validItems.length} product(s) were added to ${location.name}.`,
+          message: `${selected.length} product(s) from "${upload.originalName}" were added to ${location.name}.`,
         },
       });
 
       await this.audit.log(tx, {
         organizationId,
         userId: actor.id,
-        action: "SUPPLIER_UPLOAD_ACCEPTED",
+        action: "SUPPLIER_UPLOAD_STOCKED",
         entity: "SupplierUpload",
         entityId: upload.id,
         oldValue: { status: upload.status },
-        newValue: { status: "ACCEPTED", location: location.name },
+        newValue: { status, location: location.name, rows: selected.length },
       });
 
       return {
-        ...updated,
-        location: { id: location.id, name: location.name },
         createdProducts,
         existingProducts,
-        skippedCount: items.length - validItems.length,
+        stockedCount: selected.length,
+        location: { id: location.id, name: location.name },
+        status,
       };
+    });
+
+    this.notificationStream.publish({
+      audience: "supplier",
+      recipientId: upload.supplierUserId,
+      message: notification?.message,
     });
 
     // Asynchronously trigger ML demand forecast & shortage retraining
@@ -206,6 +325,68 @@ export class SupplierPortalService {
     return result;
   }
 
+  /** Send every INCOMPLETE row back to the supplier with an optional note. */
+  async returnIncomplete(
+    organizationId: string,
+    id: string,
+    input: ReturnIncompleteInput,
+    actor: AuthUser,
+  ) {
+    const upload = await this.assertOrgUpload(organizationId, id);
+    if (upload.status !== SupplierUploadStatus.PENDING) {
+      throw invalidOperation("Only uploads waiting for vendor review can return rows");
+    }
+    const note = input.note?.trim() || null;
+
+    // Assigned inside the transaction; published only after it commits.
+    let notification = undefined as { message: string } | undefined;
+    const result = await this.prisma.$transaction(async (tx) => {
+      await lockUpload(
+        tx,
+        upload.id,
+        [SupplierUploadStatus.PENDING],
+        "Only uploads waiting for vendor review can return rows",
+      );
+      const { count } = await tx.supplierUploadItem.updateMany({
+        where: { uploadId: upload.id, etlStatus: SupplierItemEtlStatus.INCOMPLETE },
+        data: { etlStatus: SupplierItemEtlStatus.RETURNED },
+      });
+      if (count === 0) throw invalidOperation("There are no incomplete rows to send back");
+
+      // Keep an earlier note for rows still RETURNED from a previous batch.
+      if (note) {
+        await tx.supplierUpload.update({ where: { id: upload.id }, data: { vendorNote: note } });
+      }
+      const status = await syncUploadStatus(tx, upload.id);
+
+      notification = await tx.supplierNotification.create({
+        data: {
+          organizationId,
+          uploadId: upload.id,
+          supplierUserId: upload.supplierUserId,
+          type: "REJECTED",
+          message: `${count} row(s) from "${upload.originalName}" have empty or duplicate values and need your correction.${note ? ` Vendor note: ${note}` : ""} Fix them on the Incomplete data page.`,
+        },
+      });
+
+      await this.audit.log(tx, {
+        organizationId,
+        userId: actor.id,
+        action: "SUPPLIER_UPLOAD_ROWS_RETURNED",
+        entity: "SupplierUpload",
+        entityId: upload.id,
+        newValue: { returned: count, note },
+      });
+      return { returned: count, status };
+    });
+    this.notificationStream.publish({
+      audience: "supplier",
+      recipientId: upload.supplierUserId,
+      message: notification?.message,
+    });
+    return result;
+  }
+
   async rejectUpload(
     organizationId: string,
     id: string,
@@ -213,11 +394,19 @@ export class SupplierPortalService {
     actor: AuthUser,
   ) {
     const upload = await this.assertOrgUpload(organizationId, id);
-    if (upload.status === SupplierUploadStatus.ACCEPTED) {
-      throw invalidOperation("An accepted upload cannot be rejected");
-    }
+    const wrongStatus = "Only uploads waiting for vendor review can be rejected";
+    if (upload.status !== SupplierUploadStatus.PENDING) throw invalidOperation(wrongStatus);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
+      await lockUpload(tx, upload.id, [SupplierUploadStatus.PENDING], wrongStatus);
+      const stocked = await tx.supplierUploadItem.count({
+        where: { uploadId: upload.id, etlStatus: SupplierItemEtlStatus.STOCKED },
+      });
+      if (stocked > 0) {
+        throw invalidOperation(
+          "Rows from this upload are already in stock. Send the incomplete rows back instead of rejecting the file.",
+        );
+      }
       const updated = await tx.supplierUpload.update({
         where: { id: upload.id },
         data: {
@@ -246,6 +435,12 @@ export class SupplierPortalService {
       });
       return updated;
     });
+    this.notificationStream.publish({
+      audience: "supplier",
+      recipientId: upload.supplierUserId,
+      message: `"${upload.originalName}" was rejected: ${input.note}`,
+    });
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -343,16 +538,6 @@ export class SupplierPortalService {
     });
     if (existing) return existing;
     return tx.category.create({ data: { organizationId, name: trimmed } });
-  }
-
-  private async resolveOpenNotifications(
-    tx: Prisma.TransactionClient,
-    uploadId: string,
-  ) {
-    await tx.supplierNotification.updateMany({
-      where: { uploadId, readAt: null },
-      data: { readAt: new Date(), resolvedAt: new Date() },
-    });
   }
 
   private async uploadCounts(organizationId: string) {

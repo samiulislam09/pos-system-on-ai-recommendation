@@ -28,6 +28,9 @@ export class SupplierAuthController {
     return this.supplierAuth.refresh(body.refreshToken);
   }
 
+  // Public skips the global staff JWT guard, which rejects supplier tokens;
+  // the supplier guard below authenticates instead.
+  @Public()
   @UseGuards(SupplierJwtAuthGuard)
   @Post("supplier-logout")
   @HttpCode(200)

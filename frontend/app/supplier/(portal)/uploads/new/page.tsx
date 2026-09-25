@@ -62,10 +62,11 @@ export default function SupplierUploadNewPage() {
     return (
       <div className="space-y-7">
         <header>
-          <Badge color="green" className="mb-3">Uploaded</Badge>
+          <Badge color="green" className="mb-3">Sent for review</Badge>
           <h1 className="text-2xl font-semibold tracking-[-0.035em] text-zinc-950">{result.originalName}</h1>
           <p className="mt-2 text-sm text-zinc-500">
             {result.rowCount} row{result.rowCount !== 1 && "s"} parsed and sent to the vendor for review.
+            You&apos;ll be notified when the vendor responds.
           </p>
         </header>
 
@@ -86,7 +87,10 @@ export default function SupplierUploadNewPage() {
         ) : null}
 
         <div className="flex gap-2">
-          <Button onClick={() => router.push("/supplier/uploads")}>Go to uploads</Button>
+          <Button onClick={() => router.push(`/supplier/uploads/${result.id}`)}>
+            View upload
+          </Button>
+          <Button variant="outline" onClick={() => router.push("/supplier/uploads")}>Go to uploads</Button>
           <Button variant="outline" onClick={() => { setResult(null); setContent(""); setFileName(""); fileRef.current?.click(); }}>
             Upload another
           </Button>
@@ -146,7 +150,7 @@ export default function SupplierUploadNewPage() {
             ) : null}
 
             <Button type="submit" disabled={loading || !content.trim()} className="w-full">
-              {loading ? "Uploading..." : "Upload and submit for review"}
+              {loading ? "Uploading..." : "Upload and send for review"}
             </Button>
           </form>
         </CardContent>

@@ -1,10 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { supplierLogout } from "@/lib/supplier-api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  getSupplierToken,
+  refreshSupplierSession,
+  supplierApiFetch,
+  supplierLogout,
+} from "@/lib/supplier-api";
+import { useNotificationStream, type StreamEvent, type StreamSource } from "@/lib/notification-stream";
+import { NotificationToasts, useToasts } from "@/components/toast";
 import { cn } from "@/components/ui";
 import { Icon, type IconName } from "@/components/icons";
+
+const STREAM: StreamSource = {
+  path: "/supplier-portal/notifications/stream",
+  getToken: getSupplierToken,
+  refresh: refreshSupplierSession,
+};
 
 const SUPPLIER_NAV: Array<{
   href: string;
@@ -13,16 +28,36 @@ const SUPPLIER_NAV: Array<{
 }> = [
   { href: "/supplier/dashboard", label: "Overview", icon: "dashboard" },
   { href: "/supplier/uploads", label: "My uploads", icon: "uploads" },
+  { href: "/supplier/incomplete", label: "Incomplete data", icon: "alert" },
   { href: "/supplier/notifications", label: "Notifications", icon: "bell" },
 ];
 
 export function SupplierSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const unreadBadge =
-    typeof window !== "undefined"
-      ? parseInt(localStorage.getItem("sup_unread") ?? "0", 10) || null
-      : null;
+  const queryClient = useQueryClient();
+  const { data: profile } = useQuery({
+    queryKey: ["supplier-profile"],
+    queryFn: () =>
+      supplierApiFetch<{ report: { returnedItems?: number; unreadNotifications?: number } }>(
+        "/supplier-portal/me",
+      ),
+  });
+  const returnedBadge = profile?.report.returnedItems ?? 0;
+  const unreadBadge = profile?.report.unreadNotifications ?? 0;
+
+  const { toasts, push, dismiss } = useToasts();
+  const onStreamEvent = useCallback(
+    ({ message }: StreamEvent) => {
+      // Every supplier-portal query key starts with "supplier-".
+      queryClient.invalidateQueries({
+        predicate: (q) => String(q.queryKey[0]).startsWith("supplier-"),
+      });
+      if (message) push(message);
+    },
+    [queryClient, push],
+  );
+  useNotificationStream(STREAM, onStreamEvent);
 
   const handleLogout = async () => {
     await supplierLogout();
@@ -64,8 +99,11 @@ export function SupplierSidebar() {
               >
                 <Icon name={item.icon} className={cn("h-[18px] w-[18px]", active ? "text-teal-700" : "text-zinc-400 group-hover:text-zinc-700")} />
                 <span className="flex-1 whitespace-nowrap">{item.label}</span>
-                {isNotifications && unreadBadge !== null && unreadBadge > 0 ? (
+                {isNotifications && unreadBadge > 0 ? (
                   <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">{unreadBadge}</span>
+                ) : null}
+                {item.href === "/supplier/incomplete" && returnedBadge > 0 ? (
+                  <span className="ml-auto rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">{returnedBadge}</span>
                 ) : null}
               </Link>
             );
@@ -77,21 +115,18 @@ export function SupplierSidebar() {
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-xs font-bold text-white">SP</span>
           <span className="min-w-0">
             <span className="block truncate text-xs font-semibold text-zinc-800">Supplier Portal</span>
-            <span className="block truncate text-[11px] text-zinc-400">Vendor workspace</span>
+            <span className="block truncate text-[11px] text-zinc-400">Supplier workspace</span>
           </span>
         </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard" className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-600 hover:bg-zinc-50">
-            <Icon name="stores" className="h-4 w-4" /> Vendor dashboard
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-500 hover:bg-red-50 hover:text-red-700"
-          >
-            <Icon name="logout" className="h-[18px] w-[18px]" /> Log out
-          </button>
-        </div>
+        <button
+          onClick={handleLogout}
+          className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium text-zinc-500 hover:bg-red-50 hover:text-red-700"
+        >
+          <Icon name="logout" className="h-[18px] w-[18px]" /> Log out
+        </button>
       </div>
+      <NotificationToasts toasts={toasts} dismiss={dismiss} href="/supplier/notifications" />
     </aside>
   );
 }
+

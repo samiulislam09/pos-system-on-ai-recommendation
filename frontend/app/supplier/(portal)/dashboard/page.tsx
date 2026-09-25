@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supplierApiFetch } from "@/lib/supplier-api";
 import {
@@ -28,6 +27,7 @@ interface SupplierProfile {
     totalUploads: number;
     unreadNotifications: number;
     counts: Record<string, number>;
+    returnedItems: number;
   };
 }
 
@@ -71,18 +71,12 @@ export default function SupplierDashboardPage() {
       }>("/supplier-portal/notifications"),
   });
 
-  useEffect(() => {
-    if (notifications.data) {
-      localStorage.setItem("sup_unread", String(notifications.data.unread));
-      window.dispatchEvent(new Event("supplier-auth-changed"));
-    }
-  }, [notifications.data]);
 
   const report = profile.data?.report;
   const pending = report?.counts?.PENDING ?? 0;
   const rejected = report?.counts?.REJECTED ?? 0;
   const accepted = report?.counts?.ACCEPTED ?? 0;
-  const incomplete = report?.counts?.INCOMPLETE ?? 0;
+  const returnedRows = report?.returnedItems ?? 0;
 
   return (
     <div className="space-y-7">
@@ -95,7 +89,7 @@ export default function SupplierDashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Total uploads" value={report?.totalUploads ?? "—"} />
         <StatCard label="Pending review" value={pending} hint="awaiting vendor action" />
-        <StatCard label="Needs fixing" value={incomplete} hint="missing data" color="amber" />
+        <StatCard label="Rows to fix" value={returnedRows} hint="on the Incomplete data page" color="amber" />
         <StatCard label="Rejected" value={rejected} hint="requires resubmission" color="red" />
         <StatCard label="Accepted" value={accepted} hint="added to stock" color="green" />
       </div>
@@ -152,24 +146,30 @@ export default function SupplierDashboardPage() {
               <Loading />
             ) : notifications.data && notifications.data.data.length > 0 ? (
               <div className="space-y-2">
-                {notifications.data.data.slice(0, 6).map((n) => (
-                  <Link
-                    key={n.id}
-                    href={n.upload.status === "INCOMPLETE" ? `/supplier/uploads/${n.upload.id}/fix` : `/supplier/uploads/${n.upload.id}`}
-                    className={`block rounded-lg border p-3 text-sm transition-all hover:shadow-sm ${
-                      n.readAt ? "border-zinc-200 bg-white" : "border-teal-200 bg-teal-50/50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${n.readAt ? "bg-zinc-300" : "bg-teal-500"}`} />
-                      <Badge color={n.type === "REJECTED" ? "red" : n.type === "ACCEPTED" ? "green" : n.upload.status === "INCOMPLETE" ? "amber" : "indigo"}>
-                        {n.upload.status === "INCOMPLETE" ? "NEEDS FIXING" : n.type}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-zinc-600">{n.message}</p>
-                    <p className="mt-1 text-[11px] text-zinc-400">{n.upload.originalName}</p>
-                  </Link>
-                ))}
+                {notifications.data.data.slice(0, 6).map((n) => {
+                  // A REJECTED-type notice on an upload that is not itself
+                  // rejected means rows were returned for correction.
+                  const needsFixing =
+                    n.upload.status === "INCOMPLETE" || (n.type === "REJECTED" && n.upload.status !== "REJECTED");
+                  return (
+                    <Link
+                      key={n.id}
+                      href={needsFixing ? "/supplier/incomplete" : `/supplier/uploads/${n.upload.id}`}
+                      className={`block rounded-lg border p-3 text-sm transition-all hover:shadow-sm ${
+                        n.readAt ? "border-zinc-200 bg-white" : "border-teal-200 bg-teal-50/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${n.readAt ? "bg-zinc-300" : "bg-teal-500"}`} />
+                        <Badge color={needsFixing ? "amber" : n.type === "REJECTED" ? "red" : n.type === "ACCEPTED" ? "green" : "indigo"}>
+                          {needsFixing ? "NEEDS FIXING" : n.type}
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-zinc-600">{n.message}</p>
+                      <p className="mt-1 text-[11px] text-zinc-400">{n.upload.originalName}</p>
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
               <Empty label="No notifications yet" />
@@ -196,7 +196,7 @@ function StatCard({
   label: string;
   value: React.ReactNode;
   hint?: string;
-  color?: "green" | "red" | "amber";
+  color?: "green" | "red" | "amber" | "blue";
 }) {
   return (
     <Card className="relative overflow-hidden">
@@ -208,6 +208,8 @@ function StatCard({
             ? "bg-gradient-to-r from-red-600 via-red-400 to-transparent"
             : color === "amber"
             ? "bg-gradient-to-r from-amber-600 via-amber-400 to-transparent"
+            : color === "blue"
+            ? "bg-gradient-to-r from-sky-600 via-sky-400 to-transparent"
             : "bg-gradient-to-r from-teal-600 via-teal-400 to-transparent"
         }`}
       />

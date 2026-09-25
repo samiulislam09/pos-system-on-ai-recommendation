@@ -51,6 +51,8 @@ interface SupplierFetchOptions {
   method?: string;
   body?: unknown;
   token?: string | null;
+  /** Set on the retry after a token refresh, so a second 401 does not loop. */
+  retried?: boolean;
 }
 
 export async function supplierApiFetch<T>(
@@ -67,10 +69,10 @@ export async function supplierApiFetch<T>(
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
-  if (res.status === 401 && token) {
+  if (res.status === 401 && token && !options.retried) {
     const refreshed = await refreshSupplierSession();
     if (refreshed) {
-      return supplierApiFetch<T>(path, { ...options, token: refreshed });
+      return supplierApiFetch<T>(path, { ...options, token: refreshed, retried: true });
     }
     clearSupplierTokens();
     if (typeof window !== "undefined") window.location.replace("/supplier/login");
@@ -151,6 +153,8 @@ export async function supplierLogout(): Promise<void> {
         body: { refreshToken },
       });
     }
+  } catch {
+    // Revoking the refresh token is best-effort; the local session ends anyway.
   } finally {
     clearSupplierTokens();
   }

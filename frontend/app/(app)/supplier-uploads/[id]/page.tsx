@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import {
@@ -19,6 +19,9 @@ import {
   formatMoney,
 } from "@/components/ui";
 
+type EtlStatus = "NEW" | "GOOD" | "INCOMPLETE" | "RETURNED" | "STOCKED";
+type BadgeColor = "zinc" | "green" | "red" | "amber" | "blue" | "indigo";
+
 interface UploadItem {
   id: string;
   poNumber: string;
@@ -28,12 +31,15 @@ interface UploadItem {
   itemDescription: string;
   category: string;
   orderQty: number;
-  unitPriceBdt: number;
-  totalAmountBdt: number;
-  orderDate: string;
-  deliveryDate: string;
-  status: string;
-  missingFields: string[];
+  unitPriceBdt: number | string;
+  totalAmountBdt: number | string;
+  orderDate: string | null;
+  deliveryDate: string | null;
+  status: string | null;
+  missingFields: string[] | null;
+  etlStatus: EtlStatus;
+  stockedAt: string | null;
+  stockedLocation: { id: string; name: string } | null;
 }
 
 interface UploadDetail {
@@ -43,11 +49,8 @@ interface UploadDetail {
   rowCount: number;
   submissionCount: number;
   vendorNote: string | null;
-  issues: Array<{ row: number; field: string; message: string }> | null;
-  acceptedAt: string | null;
   createdAt: string;
   supplierUser: { id: string; name: string; email: string; phone: string | null };
-  location: { id: string; name: string; type: string } | null;
   items: UploadItem[];
 }
 
@@ -58,12 +61,65 @@ interface Store {
   type: string;
 }
 
-interface AcceptResult {
-  id: string;
+interface StockResult {
   createdProducts: number;
   existingProducts: number;
-  skippedCount: number;
+  stockedCount: number;
   location: { id: string; name: string };
+}
+
+const TABS: EtlStatus[] = ["NEW", "GOOD", "INCOMPLETE", "RETURNED", "STOCKED"];
+const TAB_LABELS: Record<EtlStatus, string> = {
+  NEW: "New",
+  GOOD: "Good",
+  INCOMPLETE: "Incomplete",
+  RETURNED: "Returned to supplier",
+  STOCKED: "Stocked",
+};
+const TAB_COLORS: Record<EtlStatus, BadgeColor> = {
+  NEW: "zinc",
+  GOOD: "green",
+  INCOMPLETE: "amber",
+  RETURNED: "blue",
+  STOCKED: "indigo",
+};
+
+// Catalog fields the vendor can choose not to write when stocking.
+const OPTIONAL_FIELDS = ["itemDescription", "category", "unitPriceBdt"] as const;
+type AcceptField = (typeof OPTIONAL_FIELDS)[number];
+
+interface Column {
+  column: string;
+  label: string;
+  align?: "right";
+  field?: AcceptField;
+  /** Needed to stock a row, so it is always checked. */
+  required?: true;
+  render: (item: UploadItem) => React.ReactNode;
+}
+
+const text = (v: string | null) => (v && v.trim() ? v : null);
+
+const COLUMNS: Column[] = [
+  { column: "po_number", label: "PO #", render: (i) => text(i.poNumber) },
+  { column: "vendor_id", label: "Vendor ID", render: (i) => text(i.vendorId) },
+  { column: "vendor_name", label: "Vendor", render: (i) => text(i.vendorName) },
+  { column: "sku", label: "SKU", required: true, render: (i) => text(i.sku) && <span className="font-mono text-xs">{i.sku}</span> },
+  { column: "item_description", label: "Description", field: "itemDescription", render: (i) => text(i.itemDescription) },
+  { column: "category", label: "Category", field: "category", render: (i) => text(i.category) },
+  { column: "order_qty", label: "Qty", align: "right", required: true, render: (i) => (i.orderQty > 0 ? i.orderQty.toLocaleString() : null) },
+  { column: "unit_price_bdt", label: "Unit price", align: "right", field: "unitPriceBdt", render: (i) => (Number(i.unitPriceBdt) > 0 ? formatMoney(i.unitPriceBdt) : null) },
+  { column: "total_amount_bdt", label: "Total", align: "right", render: (i) => (Number(i.totalAmountBdt) > 0 ? formatMoney(i.totalAmountBdt) : null) },
+  { column: "order_date", label: "Order date", render: (i) => text(i.orderDate) },
+  { column: "delivery_date", label: "Delivery", render: (i) => text(i.deliveryDate) },
+  { column: "status", label: "Status", render: (i) => text(i.status) },
+];
+
+const TH = "whitespace-nowrap px-3 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500";
+
+function isFlagged(item: UploadItem, column: string) {
+  const missing = item.missingFields ?? [];
+  return missing.includes(column) || (column === "sku" && missing.includes("duplicate_sku"));
 }
 
 export default function VendorUploadDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -75,89 +131,127 @@ export default function VendorUploadDetailPage({ params }: { params: Promise<{ i
     queryFn: () => apiFetch<UploadDetail>(`/supplier-portal/manage/uploads/${id}`),
     enabled: !!id,
   });
-
   const { data: stores } = useQuery({
     queryKey: ["stores"],
     queryFn: () => apiFetch<Store[]>("/stores"),
   });
 
+  const [tab, setTab] = useState<EtlStatus | null>(null);
   const [locationId, setLocationId] = useState("");
-  const [accepting, setAccepting] = useState(false);
-  const [acceptResult, setAcceptResult] = useState<AcceptResult | null>(null);
-
+  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set());
+  const [excludedColumns, setExcludedColumns] = useState<Set<string>>(new Set());
+  const [returnNote, setReturnNote] = useState("");
   const [rejectNote, setRejectNote] = useState("");
-  const [rejecting, setRejecting] = useState(false);
-  const [rejectError, setRejectError] = useState<string | null>(null);
+  const [etlResult, setEtlResult] = useState<{ good: number; incomplete: number } | null>(null);
+  const [stockResult, setStockResult] = useState<StockResult | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const acceptMutation = useMutation({
-    mutationFn: (lid: string) =>
-      apiFetch(`/supplier-portal/manage/uploads/${id}/accept`, {
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["manage-supplier-upload", id] });
+    queryClient.invalidateQueries({ queryKey: ["manage-supplier-uploads"] });
+    setDeselectedIds(new Set());
+    setActionError(null);
+  };
+  const onError = (err: unknown) => setActionError(err instanceof Error ? err.message : "Action failed");
+
+  const etlMutation = useMutation({
+    mutationFn: (body: { itemIds: string[]; columns: string[] }) =>
+      apiFetch<{ good: number; incomplete: number }>(`/supplier-portal/manage/uploads/${id}/etl`, {
         method: "POST",
-        body: { locationId: lid },
+        body,
       }),
-    onSuccess: (data: any) => {
-      setAcceptResult(data as AcceptResult);
-      queryClient.invalidateQueries({ queryKey: ["manage-supplier-upload", id] });
-      queryClient.invalidateQueries({ queryKey: ["manage-supplier-uploads"] });
+    onSuccess: (data) => {
+      setEtlResult(data);
+      setTab(data.good > 0 ? "GOOD" : "INCOMPLETE");
+      refresh();
     },
-    onError: (err: any) => alert(err.message || "Accept failed"),
+    onError,
+  });
+
+  const stockMutation = useMutation({
+    mutationFn: (body: { locationId: string; itemIds: string[]; fields?: AcceptField[] }) =>
+      apiFetch<StockResult>(`/supplier-portal/manage/uploads/${id}/accept`, { method: "POST", body }),
+    onSuccess: (data) => {
+      setStockResult(data);
+      refresh();
+    },
+    onError,
+  });
+
+  const returnMutation = useMutation({
+    mutationFn: (note: string) =>
+      apiFetch<{ returned: number }>(`/supplier-portal/manage/uploads/${id}/return-incomplete`, {
+        method: "POST",
+        body: note.trim() ? { note: note.trim() } : {},
+      }),
+    onSuccess: () => {
+      setReturnNote("");
+      refresh();
+    },
+    onError,
   });
 
   const rejectMutation = useMutation({
     mutationFn: (note: string) =>
-      apiFetch(`/supplier-portal/manage/uploads/${id}/reject`, {
-        method: "POST",
-        body: { note },
-      }),
+      apiFetch(`/supplier-portal/manage/uploads/${id}/reject`, { method: "POST", body: { note } }),
     onSuccess: () => {
       setRejectNote("");
-      queryClient.invalidateQueries({ queryKey: ["manage-supplier-upload", id] });
-      queryClient.invalidateQueries({ queryKey: ["manage-supplier-uploads"] });
+      refresh();
     },
-    onError: (err: any) => {
-      setRejectError(err.message || "Reject failed");
-      setRejecting(false);
-    },
+    onError,
   });
 
-  const handleAccept = () => {
-    if (!locationId) return;
-    setAccepting(true);
-    acceptMutation.mutate(locationId, {
-      onSettled: () => setAccepting(false),
-    });
-  };
-
-  const handleReject = () => {
-    if (!rejectNote.trim()) {
-      setRejectError("Please enter a note explaining what data is missing or needs correction.");
-      return;
-    }
-    setRejectError(null);
-    setRejecting(true);
-    rejectMutation.mutate(rejectNote, {
-      onSettled: () => setRejecting(false),
-    });
-  };
+  const counts = useMemo(() => {
+    const c: Record<EtlStatus, number> = { NEW: 0, GOOD: 0, INCOMPLETE: 0, RETURNED: 0, STOCKED: 0 };
+    for (const item of upload?.items ?? []) c[item.etlStatus]++;
+    return c;
+  }, [upload]);
 
   if (isLoading || !id) return <Loading />;
   if (!upload) return <Empty label="Upload not found" />;
 
+  const activeTab: EtlStatus = tab ?? TABS.find((t) => counts[t] > 0) ?? "NEW";
+  const rows = upload.items.filter((i) => i.etlStatus === activeTab);
   const isPending = upload.status === "PENDING";
-  const isAccepted = upload.status === "ACCEPTED";
-  const isRejected = upload.status === "REJECTED";
-  const isIncomplete = upload.status === "INCOMPLETE";
-  const statusColor = isAccepted ? "green" : isRejected ? "red" : isIncomplete ? "amber" : "indigo";
+  const selectable = isPending && (activeTab === "NEW" || activeTab === "GOOD");
+  const selectedRows = rows.filter((i) => !deselectedIds.has(i.id));
+  const allSelected = selectable && selectedRows.length === rows.length;
+  const isExcluded = (c: Column) => !c.required && excludedColumns.has(c.column);
+  const statusColor: BadgeColor =
+    upload.status === "ACCEPTED" ? "green" : upload.status === "REJECTED" ? "red" : upload.status === "INCOMPLETE" ? "amber" : "indigo";
+
+  const toggle = <T,>(set: Set<T>, value: T) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    return next;
+  };
+
+  const handleEtl = () => {
+    etlMutation.mutate({
+      itemIds: selectedRows.map((i) => i.id),
+      columns: COLUMNS.filter((c) => !isExcluded(c)).map((c) => c.column),
+    });
+  };
+
+  const handleStock = () => {
+    const fields = COLUMNS.filter((c) => c.field && !isExcluded(c)).map((c) => c.field!);
+    stockMutation.mutate({
+      locationId,
+      itemIds: selectedRows.map((i) => i.id),
+      ...(fields.length < OPTIONAL_FIELDS.length ? { fields } : {}),
+    });
+  };
 
   return (
     <div className="space-y-7">
       <PageHeader
         eyebrow="Supplier upload review"
         title={upload.originalName}
-        description={`From ${upload.supplierUser.name} · Submitted ${new Date(upload.createdAt).toLocaleString()} · ${upload.rowCount} rows · Attempt #${upload.submissionCount}`}
+        description={`From ${upload.supplierUser.name} · Submitted ${new Date(upload.createdAt).toLocaleString()} · ${upload.items.length} rows · Attempt #${upload.submissionCount}`}
         actions={
           <div className="flex gap-2">
-            <Badge color={statusColor as any}>{upload.status}</Badge>
+            <Badge color={statusColor}>{upload.status}</Badge>
             <Link
               href="/supplier-uploads"
               className="inline-flex min-h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 shadow-sm hover:border-zinc-400 hover:bg-zinc-50"
@@ -168,156 +262,243 @@ export default function VendorUploadDetailPage({ params }: { params: Promise<{ i
         }
       />
 
-      {/* Supplier info */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle>Supplier</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-sm font-semibold text-zinc-800">{upload.supplierUser.name}</p>
-              <p className="text-xs text-zinc-500">{upload.supplierUser.email}</p>
-              {upload.supplierUser.phone && <p className="text-xs text-zinc-500">{upload.supplierUser.phone}</p>}
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-zinc-500">Accepted to</p>
-              <p className="text-sm font-semibold text-zinc-800">{upload.location?.name ?? "—"}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Issues */}
-      {upload.issues && upload.issues.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-amber-800">Data quality flags</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-1 text-sm text-amber-700">
-              {upload.issues.map((issue, i) => (
-                <li key={i}>Row {issue.row}: <span className="font-semibold">{issue.field}</span> — {issue.message}</li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+      {actionError && (
+        <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{actionError}</p>
       )}
 
-      {/* Incomplete notice */}
-      {isIncomplete && (
-        <Card className="border-amber-200 bg-amber-50/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-amber-800">Awaiting supplier fixes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-amber-700">
-              This upload has rows with missing data that could not be auto-filled from the file or the product
-              catalog. The supplier has been notified and will need to fill in the missing fields before you can
-              review it. You will be notified once the upload is ready.
+      {etlResult && (
+        <p className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
+          ETL complete: <span className="font-semibold">{etlResult.good} good</span> ·{" "}
+          <span className="font-semibold">{etlResult.incomplete} incomplete</span>
+        </p>
+      )}
+
+      {stockResult && (
+        <Card className="border-emerald-200 bg-emerald-50/50">
+          <CardContent className="pt-6">
+            <p className="text-sm text-emerald-800">
+              Added <span className="font-semibold">{stockResult.stockedCount}</span> row(s) to{" "}
+              <span className="font-semibold">{stockResult.location.name}</span> ·{" "}
+              {stockResult.createdProducts} new product(s), {stockResult.existingProducts} updated.
+            </p>
+            <p className="mt-2 text-xs text-emerald-700">
+              AI forecasting has been triggered to retrain with the new stock.{" "}
+              <Link href="/ai-insights" className="font-semibold underline">View AI Insights</Link>
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Accept / Reject panels */}
-      {isPending && !acceptResult && (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <Card className="border-emerald-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-emerald-800">Accept shipment</CardTitle>
-              <p className="text-xs text-emerald-700">
-                Products will be added to the selected store. Existing products by SKU will be updated; new products will be created.
+      {/* Items */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap gap-2">
+            {TABS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => { setTab(t); setDeselectedIds(new Set()); }}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                  activeTab === t ? "border-teal-600 bg-teal-50 text-teal-800" : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                {TAB_LABELS[t]}
+                <Badge color={TAB_COLORS[t]}>{counts[t]}</Badge>
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {selectable && activeTab === "NEW" && rows.length > 0 && (
+            <div className="grid gap-3 rounded-lg border border-teal-200 bg-teal-50/40 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+              <p className="text-xs text-zinc-600">
+                Choose the rows and columns to check, then run ETL. Selected rows with an empty
+                value in a checked column, or a duplicate SKU, become incomplete; the rest are
+                good. SKU and Qty are always checked because stocking needs them. Unselected rows
+                stay here for a later run.
               </p>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                  Select store or warehouse
-                  <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-                    <option value="">Choose a location...</option>
-                    {stores?.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.type === "WAREHOUSE" ? "Warehouse" : "Store"})
-                      </option>
+              <Button onClick={handleEtl} disabled={selectedRows.length === 0 || etlMutation.isPending}>
+                {etlMutation.isPending ? "Running ETL..." : `Run ETL on ${selectedRows.length} row(s)`}
+              </Button>
+            </div>
+          )}
+
+          {selectable && activeTab === "GOOD" && rows.length > 0 && (
+            <div className="grid gap-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                Add selected good rows to store or warehouse
+                <Select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+                  <option value="">Choose a location...</option>
+                  {stores?.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.type === "WAREHOUSE" ? "Warehouse" : "Store"})
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <Button
+                disabled={!locationId || selectedRows.length === 0 || stockMutation.isPending}
+                onClick={handleStock}
+              >
+                {stockMutation.isPending ? "Adding to stock..." : `Add ${selectedRows.length} row(s) to stock`}
+              </Button>
+              {COLUMNS.some((c) => c.field && isExcluded(c)) && (
+                <p className="text-xs text-amber-700 sm:col-span-2">
+                  Unchecked description, category or unit price are not written; existing products
+                  keep their current values.
+                </p>
+              )}
+            </div>
+          )}
+
+          {isPending && activeTab === "INCOMPLETE" && rows.length > 0 && (
+            <div className="grid gap-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                Note to supplier (optional)
+                <Textarea
+                  rows={3}
+                  value={returnNote}
+                  onChange={(e) => setReturnNote(e.target.value)}
+                  placeholder="e.g. Please fill in the vendor ID and delivery date for these rows."
+                />
+              </label>
+              <Button onClick={() => returnMutation.mutate(returnNote)} disabled={returnMutation.isPending}>
+                {returnMutation.isPending ? "Sending..." : `Send ${rows.length} incomplete row(s) to supplier`}
+              </Button>
+            </div>
+          )}
+
+          {rows.length > 0 ? (
+            <div className="w-full overflow-x-auto rounded-lg border border-zinc-200">
+              <table className="w-full text-sm">
+                <thead className="border-b border-zinc-200 bg-zinc-50/80">
+                  <tr>
+                    {selectable && (
+                      <th className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all rows"
+                          className="h-4 w-4 accent-teal-600"
+                          checked={allSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = selectedRows.length > 0 && !allSelected;
+                          }}
+                          onChange={() =>
+                            setDeselectedIds(allSelected ? new Set(rows.map((i) => i.id)) : new Set())
+                          }
+                        />
+                      </th>
+                    )}
+                    {COLUMNS.map((c) => (
+                      <th key={c.column} className={`${TH} ${c.align === "right" ? "text-right" : ""}`}>
+                        <span className="inline-flex items-center gap-1.5">
+                          {selectable && (
+                            <input
+                              type="checkbox"
+                              aria-label={`Use ${c.label} column`}
+                              title={c.required ? "Always used — needed to stock the row" : undefined}
+                              className="h-3.5 w-3.5 accent-teal-600 disabled:opacity-60"
+                              checked={!isExcluded(c)}
+                              disabled={c.required}
+                              onChange={() => setExcludedColumns((s) => toggle(s, c.column))}
+                            />
+                          )}
+                          {c.label}
+                        </span>
+                      </th>
                     ))}
-                  </Select>
-                </label>
-                <Button disabled={!locationId || accepting} onClick={handleAccept} className="w-full">
-                  {accepting ? "Adding to stock..." : "Accept and add to stock"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                    {activeTab === "STOCKED" && (
+                      <>
+                        <th className={TH}>Store</th>
+                        <th className={TH}>Stocked at</th>
+                      </>
+                    )}
+                    {(activeTab === "INCOMPLETE" || activeTab === "RETURNED") && <th className={TH}>Problems</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 bg-white">
+                  {rows.map((item) => {
+                    const off = selectable && deselectedIds.has(item.id);
+                    return (
+                      <tr key={item.id} className={`hover:bg-teal-50/30 ${off ? "opacity-40" : ""}`}>
+                        {selectable && (
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select row ${item.sku}`}
+                              className="h-4 w-4 accent-teal-600"
+                              checked={!deselectedIds.has(item.id)}
+                              onChange={() => setDeselectedIds((s) => toggle(s, item.id))}
+                            />
+                          </td>
+                        )}
+                        {COLUMNS.map((c) => {
+                          const value = c.render(item);
+                          const flagged = isFlagged(item, c.column);
+                          const dimmed = selectable && isExcluded(c);
+                          return (
+                            <td
+                              key={c.column}
+                              className={`whitespace-nowrap px-3 py-2 text-zinc-700 ${c.align === "right" ? "text-right tabular-nums" : ""} ${
+                                flagged ? "bg-red-50 ring-1 ring-inset ring-red-300" : ""
+                              } ${dimmed ? "opacity-40" : ""}`}
+                            >
+                              {value ?? <span className="text-xs italic text-red-500">empty</span>}
+                            </td>
+                          );
+                        })}
+                        {activeTab === "STOCKED" && (
+                          <>
+                            <td className="whitespace-nowrap px-3 py-2 text-zinc-700">{item.stockedLocation?.name ?? "—"}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-zinc-500">
+                              {item.stockedAt ? new Date(item.stockedAt).toLocaleString() : "—"}
+                            </td>
+                          </>
+                        )}
+                        {(activeTab === "INCOMPLETE" || activeTab === "RETURNED") && (
+                          <td className="px-3 py-2">
+                            <span className="inline-flex flex-wrap gap-1">
+                              {(item.missingFields ?? []).map((f) => (
+                                <span key={f} className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                  {f.replace(/_/g, " ")}
+                                </span>
+                              ))}
+                            </span>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <Empty label={`No ${TAB_LABELS[activeTab].toLowerCase()} rows`} />
+          )}
+        </CardContent>
+      </Card>
 
-          <Card className="border-red-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-red-800">Reject and request correction</CardTitle>
-              <p className="text-xs text-red-700">
-                The supplier will see your note and be able to correct the data and resubmit.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                  Rejection note (required)
-                  <Textarea
-                    value={rejectNote}
-                    onChange={(e) => { setRejectNote(e.target.value); setRejectError(null); }}
-                    rows={4}
-                    placeholder="e.g. Row 2 is missing the item_description. Please fill in the missing data and resubmit."
-                  />
-                </label>
-                {rejectError ? (
-                  <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{rejectError}</p>
-                ) : null}
-                <Button variant="danger" disabled={rejecting || !rejectNote.trim()} onClick={handleReject} className="w-full">
-                  {rejecting ? "Submitting rejection..." : "Reject with note"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Acceptance result */}
-      {acceptResult && (
-        <Card className="border-emerald-200 bg-emerald-50/50">
+      {/* Whole-file reject — only before anything is stocked */}
+      {isPending && counts.STOCKED === 0 && (
+        <Card className="border-red-200">
           <CardHeader className="pb-2">
-            <CardTitle className="text-emerald-800">Shipment accepted</CardTitle>
+            <CardTitle className="text-red-800">Reject the whole file</CardTitle>
+            <p className="text-xs text-red-700">The supplier will see your note and resubmit a corrected file.</p>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-emerald-700">New products created</p>
-                <p className="text-2xl font-semibold text-emerald-900">{acceptResult.createdProducts}</p>
-              </div>
-              <div>
-                <p className="text-xs text-emerald-700">Existing products updated</p>
-                <p className="text-2xl font-semibold text-emerald-900">{acceptResult.existingProducts}</p>
-              </div>
-              <div>
-                <p className="text-xs text-emerald-700">Stock added to</p>
-                <p className="text-lg font-semibold text-emerald-900">{acceptResult.location.name}</p>
-              </div>
-            </div>
-            {acceptResult.skippedCount > 0 && (
-              <p className="mt-3 text-xs text-amber-700">
-                {acceptResult.skippedCount} row(s) were skipped (missing SKU or quantity ≤ 0).
-              </p>
-            )}
-            <div className="mt-4 flex items-center justify-between rounded-lg border border-emerald-300 bg-white/70 p-3 text-xs text-emerald-800">
-              <span>🤖 AI inventory forecasting & shortage models have been automatically triggered to retrain with this new stock data.</span>
-              <Link href="/ai-insights" className="font-semibold text-emerald-700 hover:text-emerald-900 underline ml-2">
-                View AI Insights &rarr;
-              </Link>
-            </div>
+          <CardContent className="space-y-3">
+            <Textarea rows={3} value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} placeholder="Why is this file rejected?" />
+            <Button
+              variant="danger"
+              disabled={!rejectNote.trim() || rejectMutation.isPending}
+              onClick={() => rejectMutation.mutate(rejectNote.trim())}
+            >
+              {rejectMutation.isPending ? "Rejecting..." : "Reject with note"}
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Rejection note (when rejected) */}
-      {isRejected && upload.vendorNote && (
+      {upload.status === "REJECTED" && upload.vendorNote && (
         <Card className="border-red-200 bg-red-50/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-red-800">Rejection note sent</CardTitle>
@@ -327,63 +508,6 @@ export default function VendorUploadDetailPage({ params }: { params: Promise<{ i
           </CardContent>
         </Card>
       )}
-
-      {/* Items table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Product items ({upload.items.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {upload.items.length > 0 ? (
-            <div className="w-full overflow-x-auto rounded-lg border border-zinc-200">
-              <table className="w-full text-sm">
-                <thead className="border-b border-zinc-200 bg-zinc-50/80">
-                  <tr>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">PO #</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">SKU</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">Description</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">Category</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">Qty</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">Unit Price</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">Total</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">Delivery</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">Missing</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 bg-white">
-                  {upload.items.map((item) => (
-                    <tr key={item.id} className="transition-colors hover:bg-teal-50/30">
-                      <td className="px-4 py-3 text-zinc-700">{item.poNumber}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-zinc-700">{item.sku}</td>
-                      <td className="px-4 py-3 text-zinc-700">{item.itemDescription || <span className="text-red-500 italic">Missing</span>}</td>
-                      <td className="px-4 py-3 text-zinc-500">{item.category || "—"}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-zinc-700">{item.orderQty.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-zinc-700">{formatMoney(item.unitPriceBdt)}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-zinc-700">{formatMoney(item.totalAmountBdt)}</td>
-                      <td className="px-4 py-3 text-zinc-500">{item.deliveryDate || "—"}</td>
-                      <td className="px-4 py-3 text-zinc-500">
-                        {item.missingFields && item.missingFields.length > 0 ? (
-                          <span className="inline-flex flex-wrap gap-1">
-                            {item.missingFields.map((f) => (
-                              <span key={f} className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                                {f.replace(/_/g, " ")}
-                              </span>
-                            ))}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty label="No items" />
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

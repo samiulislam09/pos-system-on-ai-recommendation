@@ -12,6 +12,9 @@ import { SupplierPortalService } from "./supplier-portal.service";
 import { SupplierPortalController } from "./supplier-portal.controller";
 import { SupplierUploadsService } from "./supplier-uploads.service";
 import { SupplierUploadsController } from "./supplier-uploads.controller";
+import { NotificationStream } from "./notification-stream.service";
+import { VendorNotificationsService } from "./vendor-notifications.service";
+import { VendorNotificationsController } from "./vendor-notifications.controller";
 
 @Module({
   imports: [ConfigModule, AuditModule, AiModule, PassportModule, JwtModule.register({})],
@@ -19,12 +22,15 @@ import { SupplierUploadsController } from "./supplier-uploads.controller";
     SupplierAuthController,
     SupplierPortalController,
     SupplierUploadsController,
+    VendorNotificationsController,
   ],
   providers: [
     SupplierAuthService,
     SupplierJwtStrategy,
     SupplierPortalService,
     SupplierUploadsService,
+    NotificationStream,
+    VendorNotificationsService,
     InventoryEngine,
   ],
   exports: [SupplierAuthService],

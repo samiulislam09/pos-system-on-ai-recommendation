@@ -41,6 +41,8 @@ interface UploadItem {
   deliveryDate: string;
   status: string;
   missingFields: string[];
+  etlStatus: string;
+  stockedLocation: { id: string; name: string } | null;
 }
 
 interface UploadDetail {
@@ -130,6 +132,10 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
   const isRejected = upload.status === "REJECTED";
   const isAccepted = upload.status === "ACCEPTED";
   const isIncomplete = upload.status === "INCOMPLETE";
+  // Mirrors the backend: flagged rows of a rejected file are also fixed on the Incomplete page.
+  const hasReturnedRows = upload.items.some(
+    (i) => i.etlStatus === "RETURNED" || (isRejected && i.etlStatus === "INCOMPLETE"),
+  );
   const statusColor = isAccepted ? "green" : isRejected ? "red" : isIncomplete ? "amber" : "indigo";
 
   return (
@@ -166,31 +172,40 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
       )}
 
       {/* Acceptance info */}
-      {isAccepted && upload.location && (
+      {isAccepted && (
         <Card className="border-emerald-200 bg-emerald-50/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-emerald-800">Accepted and added to stock</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-emerald-700">
-              This shipment was added to <span className="font-semibold">{upload.location.name}</span> on {upload.acceptedAt ? new Date(upload.acceptedAt).toLocaleString() : "—"}. No further action is required.
+              This shipment was added to{" "}
+              <span className="font-semibold">
+                {(() => {
+                  const names = [...new Set(upload.items.map((i) => i.stockedLocation?.name).filter(Boolean))];
+                  return names.length > 0 ? names.join(", ") : upload.location?.name ?? "—";
+                })()}
+              </span>{" "}
+              on {upload.acceptedAt ? new Date(upload.acceptedAt).toLocaleString() : "—"}. No further action is required.
             </p>
           </CardContent>
         </Card>
       )}
 
       {/* Incomplete data */}
-      {isIncomplete && (
+      {hasReturnedRows && (
         <Card className="border-amber-200 bg-amber-50/50">
           <CardHeader className="pb-2">
             <CardTitle className="text-amber-800">Missing data — action required</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm leading-6 text-amber-700">
-              A few fields in your upload could not be auto-filled from the file data or the product catalog. Fill them in so the vendor can review your submission.
+              {isRejected
+                ? "The vendor flagged some rows of this file for empty values or duplicate SKUs. Correct them on the Incomplete data page and resubmit to send the file back for review, or resubmit a corrected file."
+                : "The vendor sent some rows of this upload back because they have empty values or duplicate SKUs. Correct them on the Incomplete data page and resubmit."}
             </p>
-            <Link href={`/supplier/uploads/${id}/fix`} className="mt-4 inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-800">
-              Fill in missing fields
+            <Link href="/supplier/incomplete" className="mt-4 inline-flex min-h-10 items-center justify-center rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-800">
+              Open Incomplete data
             </Link>
           </CardContent>
         </Card>

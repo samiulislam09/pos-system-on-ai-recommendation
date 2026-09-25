@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supplierApiFetch } from "@/lib/supplier-api";
 import {
@@ -52,12 +51,6 @@ export default function SupplierNotificationsPage() {
     },
   });
 
-  useEffect(() => {
-    if (data) {
-      localStorage.setItem("sup_unread", String(data.unread));
-      window.dispatchEvent(new Event("supplier-auth-changed"));
-    }
-  }, [data]);
 
   const handleClick = (notification: Notification) => {
     if (!notification.readAt) {
@@ -97,11 +90,14 @@ export default function SupplierNotificationsPage() {
               {notifications.map((n) => {
                 const isRejected = n.type === "REJECTED";
                 const isAccepted = n.type === "ACCEPTED";
-                const isIncomplete = n.upload.status === "INCOMPLETE";
+                // A REJECTED-type notice on an upload that is not itself
+                // rejected means rows were returned for correction.
+                const needsFixing =
+                  n.upload.status === "INCOMPLETE" || (isRejected && n.upload.status !== "REJECTED");
                 return (
                   <Link
                     key={n.id}
-                    href={isIncomplete ? `/supplier/uploads/${n.upload.id}/fix` : `/supplier/uploads/${n.upload.id}`}
+                    href={needsFixing ? "/supplier/incomplete" : `/supplier/uploads/${n.upload.id}`}
                     onClick={() => handleClick(n)}
                     className={`block rounded-xl border p-5 transition-all hover:shadow-md ${
                       n.readAt
@@ -113,8 +109,8 @@ export default function SupplierNotificationsPage() {
                       {!n.readAt && (
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-teal-500" />
                       )}
-                      <Badge color={isRejected ? "red" : isAccepted ? "green" : isIncomplete ? "amber" : "indigo"}>
-                        {n.type.replace("_", " ")}
+                      <Badge color={needsFixing ? "amber" : isRejected ? "red" : isAccepted ? "green" : "indigo"}>
+                        {needsFixing ? "NEEDS FIXING" : n.type.replace("_", " ")}
                       </Badge>
                       <span className="text-xs text-zinc-400">{new Date(n.createdAt).toLocaleString()}</span>
                       <span className="ml-auto text-[11px] font-medium text-zinc-500">{n.upload.originalName}</span>
@@ -135,8 +131,8 @@ export default function SupplierNotificationsPage() {
                       </div>
                     )}
 
-                    {/* Show inline action for incomplete uploads */}
-                    {isIncomplete && n.upload.status === "INCOMPLETE" && (
+                    {/* Show inline action for returned rows */}
+                    {needsFixing && (
                       <div className="mt-4 rounded-lg border border-amber-200 bg-white p-4">
                         <p className="text-xs font-semibold text-amber-800">Action required</p>
                         <p className="mt-1 text-xs leading-5 text-amber-700">

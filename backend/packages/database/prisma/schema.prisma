@@ -128,10 +128,24 @@ enum SupplierUploadStatus {
   INCOMPLETE
 }
 
+enum SupplierItemEtlStatus {
+  NEW
+  GOOD
+  INCOMPLETE
+  RETURNED
+  STOCKED
+}
+
 enum SupplierNotificationType {
   UPLOAD_RECEIVED
   REJECTED
   ACCEPTED
+}
+
+enum VendorNotificationType {
+  UPLOAD_SUBMITTED
+  UPLOAD_RESUBMITTED
+  ROWS_RESUBMITTED
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +181,7 @@ model Organization {
   supplierUsers         SupplierUser[]
   supplierUploads       SupplierUpload[]
   supplierNotifications SupplierNotification[]
+  vendorNotifications   VendorNotification[]
 }
 
 model User {
@@ -182,9 +197,10 @@ model User {
   updatedAt      DateTime      @updatedAt
   lastLoginAt    DateTime?
 
-  refreshTokens RefreshToken[]
-  adjustments   StockAdjustment[] @relation("AdjustedBy")
-  auditLogs     AuditLog[]
+  refreshTokens       RefreshToken[]
+  adjustments         StockAdjustment[]    @relation("AdjustedBy")
+  auditLogs           AuditLog[]
+  vendorNotifications VendorNotification[]
 
   @@index([organizationId])
 }
@@ -218,17 +234,18 @@ model Location {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  postTerminals   PostTerminal[]
-  inventory       Inventory[]
-  movements       InventoryMovement[]
-  sales           Sale[]
-  salesReturns    SaleReturn[]
-  goodsReceipts   GoodsReceipt[]
-  purchaseOrders  PurchaseOrder[]
-  transfersFrom   StockTransfer[]     @relation("TransferSource")
-  transfersTo     StockTransfer[]     @relation("TransferDestination")
-  adjustments     StockAdjustment[]
-  supplierUploads SupplierUpload[]
+  postTerminals        PostTerminal[]
+  inventory            Inventory[]
+  movements            InventoryMovement[]
+  sales                Sale[]
+  salesReturns         SaleReturn[]
+  goodsReceipts        GoodsReceipt[]
+  purchaseOrders       PurchaseOrder[]
+  transfersFrom        StockTransfer[]      @relation("TransferSource")
+  transfersTo          StockTransfer[]      @relation("TransferDestination")
+  adjustments          StockAdjustment[]
+  supplierUploads      SupplierUpload[]
+  stockedSupplierItems SupplierUploadItem[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -791,8 +808,9 @@ model SupplierUpload {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
-  items         SupplierUploadItem[]
-  notifications SupplierNotification[]
+  items               SupplierUploadItem[]
+  notifications       SupplierNotification[]
+  vendorNotifications VendorNotification[]
 
   @@index([organizationId])
   @@index([supplierUserId])
@@ -800,25 +818,30 @@ model SupplierUpload {
 }
 
 model SupplierUploadItem {
-  id              String         @id @default(cuid())
-  uploadId        String
-  upload          SupplierUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
-  poNumber        String
-  vendorId        String         @default("")
-  vendorName      String         @default("")
-  sku             String
-  itemDescription String
-  category        String         @default("")
-  orderQty        Int            @default(0)
-  unitPriceBdt    Decimal        @default(0) @db.Decimal(12, 2)
-  totalAmountBdt  Decimal        @default(0) @db.Decimal(12, 2)
-  orderDate       String?        @default("")
-  deliveryDate    String?        @default("")
-  status          String?        @default("")
-  missingFields   Json?
-  createdAt       DateTime       @default(now())
+  id                String                @id @default(cuid())
+  uploadId          String
+  upload            SupplierUpload        @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  poNumber          String
+  vendorId          String                @default("")
+  vendorName        String                @default("")
+  sku               String
+  itemDescription   String
+  category          String                @default("")
+  orderQty          Int                   @default(0)
+  unitPriceBdt      Decimal               @default(0) @db.Decimal(12, 2)
+  totalAmountBdt    Decimal               @default(0) @db.Decimal(12, 2)
+  orderDate         String?               @default("")
+  deliveryDate      String?               @default("")
+  status            String?               @default("")
+  missingFields     Json?
+  etlStatus         SupplierItemEtlStatus @default(NEW)
+  stockedLocationId String?
+  stockedLocation   Location?             @relation(fields: [stockedLocationId], references: [id], onDelete: Restrict)
+  stockedAt         DateTime?
+  createdAt         DateTime              @default(now())
 
   @@index([uploadId])
+  @@index([uploadId, etlStatus])
   @@index([sku])
 }
 
@@ -838,5 +861,24 @@ model SupplierNotification {
 
   @@index([supplierUserId])
   @@index([supplierUserId, readAt])
+  @@index([uploadId])
+}
+
+/// Staff-side alert that a supplier sent work for review. One row per
+/// recipient so each staff user has their own read state.
+model VendorNotification {
+  id             String                 @id @default(cuid())
+  organizationId String
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  uploadId       String
+  upload         SupplierUpload         @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  type           VendorNotificationType
+  message        String
+  readAt         DateTime?
+  createdAt      DateTime               @default(now())
+
+  @@index([userId, readAt])
   @@index([uploadId])
 }

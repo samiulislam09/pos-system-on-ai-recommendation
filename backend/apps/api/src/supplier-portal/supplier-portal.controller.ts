@@ -11,11 +11,15 @@ import {
   createSupplierUserSchema,
   paginationSchema,
   rejectSupplierUploadSchema,
+  returnIncompleteSchema,
+  runSupplierUploadEtlSchema,
 } from "@inv/validation";
 import type {
   AcceptSupplierUploadInput,
   CreateSupplierUserInput,
   RejectSupplierUploadInput,
+  ReturnIncompleteInput,
+  RunSupplierUploadEtlInput,
 } from "@inv/validation";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { SupplierPortalService } from "./supplier-portal.service";
@@ -61,6 +65,26 @@ export class SupplierPortalController {
     @Body(new ZodValidationPipe(acceptSupplierUploadSchema)) body: AcceptSupplierUploadInput,
   ) {
     return this.portal.acceptUpload(user.organizationId!, id, body, user);
+  }
+
+  @Post("uploads/:id/etl")
+  @RequirePermission("supplier-uploads.manage")
+  etl(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(runSupplierUploadEtlSchema)) body: RunSupplierUploadEtlInput,
+  ) {
+    return this.portal.runEtl(user.organizationId!, id, body, user);
+  }
+
+  @Post("uploads/:id/return-incomplete")
+  @RequirePermission("supplier-uploads.manage")
+  returnIncomplete(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(returnIncompleteSchema)) body: ReturnIncompleteInput,
+  ) {
+    return this.portal.returnIncomplete(user.organizationId!, id, body, user);
   }
 
   @Post("uploads/:id/reject")
