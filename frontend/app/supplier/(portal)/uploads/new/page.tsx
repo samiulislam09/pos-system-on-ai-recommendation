@@ -70,22 +70,7 @@ export default function SupplierUploadNewPage() {
           </p>
         </header>
 
-        {result.issues.length > 0 ? (
-          <Card className="border-amber-200 bg-amber-50/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-amber-800">Data quality flags</CardTitle>
-              <p className="text-xs text-amber-700">The vendor may flag these as reasons for rejection.</p>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-1 text-sm text-amber-700">
-                {result.issues.map((issue, i) => (
-                  <li key={i}>Row {issue.row}: <span className="font-semibold">{issue.field}</span> — {issue.message}</li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ) : null}
-
+        
         <div className="flex gap-2">
           <Button onClick={() => router.push(`/supplier/uploads/${result.id}`)}>
             View upload
