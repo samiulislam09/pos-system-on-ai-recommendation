@@ -3,9 +3,12 @@
 # that are seeded from the layers below, so nothing from the macOS host leaks in.
 FROM node:22-bookworm-slim
 
-# Prisma's query engine needs libssl at runtime.
+# Prisma's query engine needs libssl at runtime. procps provides `ps`, which
+# `nest start --watch` uses to find and kill the old app process on reload;
+# without it the old process keeps port 4000 and the restart fails with
+# EADDRINUSE.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && apt-get install -y --no-install-recommends openssl ca-certificates procps \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=development

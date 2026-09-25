@@ -47,6 +47,8 @@ interface ApiFetchOptions {
   body?: unknown;
   token?: string | null;
   signal?: AbortSignal;
+  /** Set on the retry after a token refresh, so a second 401 does not loop. */
+  retried?: boolean;
 }
 
 export async function apiFetch<T>(
@@ -64,10 +66,10 @@ export async function apiFetch<T>(
     signal: options.signal,
   });
 
-  if (res.status === 401 && token) {
+  if (res.status === 401 && token && !options.retried) {
     const refreshedToken = await refreshSession();
     if (refreshedToken) {
-      return apiFetch<T>(path, { ...options, token: refreshedToken });
+      return apiFetch<T>(path, { ...options, token: refreshedToken, retried: true });
     }
     if (typeof window !== "undefined") window.location.replace("/login");
   }
@@ -133,6 +135,8 @@ export async function logout(): Promise<void> {
     if (refreshToken) {
       await apiFetch("/auth/logout", { method: "POST", body: { refreshToken } });
     }
+  } catch {
+    // Revoking the refresh token is best-effort; the local session ends anyway.
   } finally {
     clearTokens();
   }

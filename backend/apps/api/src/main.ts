@@ -12,7 +12,14 @@ async function bootstrap() {
   const logger = new Logger("Bootstrap");
 
   app.use(helmet());
-  app.use(compression());
+  // Compression buffers output, which would hold back Server-Sent Events.
+  app.use(
+    compression({
+      filter: (req, res) =>
+        !String(req.headers.accept ?? "").includes("text/event-stream") &&
+        compression.filter(req, res),
+    }),
+  );
 
   app.enableCors({
     origin: (config.get<string>("CORS_ORIGIN") ?? "http://localhost:3000")

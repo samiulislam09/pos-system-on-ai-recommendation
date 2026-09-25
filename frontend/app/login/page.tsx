@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/api";
+import { supplierLogin } from "@/lib/supplier-api";
 import { Button, Input } from "@/components/ui";
 import { Icon } from "@/components/icons";
 
@@ -20,8 +21,13 @@ export default function LoginPage() {
     try {
       await login(email, password);
       router.replace("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      try {
+        await supplierLogin(email, password);
+        router.replace("/supplier/dashboard");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Invalid email or password");
+      }
     } finally {
       setLoading(false);
     }
@@ -75,7 +81,7 @@ export default function LoginPage() {
             </form>
             {process.env.NODE_ENV === "development" ? (
               <div className="mt-8 rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-xs leading-5 text-zinc-500">
-                <p className="font-semibold text-zinc-700">Demo access</p>
+                <p className="font-semibold text-zinc-700">Vendor access</p>
                 <p><span className="font-mono">admin@demo.com</span> / <span className="font-mono">admin123</span></p>
               </div>
             ) : null}

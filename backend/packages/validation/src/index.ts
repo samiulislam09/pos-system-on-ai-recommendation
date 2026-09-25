@@ -356,6 +356,138 @@ export const approveReturnSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Supplier portal
+// ---------------------------------------------------------------------------
+
+export const supplierLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const createSupplierUserSchema = z.object({
+  name: z.string().min(1).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+  phone: z.string().max(32).optional(),
+  supplierId: cuid.optional(),
+});
+
+export const supplierUploadSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  content: z.string().min(10),
+});
+
+export const supplierUploadItemSchema = z.object({
+  poNumber: z.string().min(1),
+  vendorId: z.string().default(""),
+  vendorName: z.string().default(""),
+  sku: z.string().min(1),
+  itemDescription: z.string().min(1),
+  category: z.string().default(""),
+  orderQty: z.number().int().nonnegative().default(0),
+  unitPriceBdt: z.coerce.number().nonnegative().multipleOf(0.01).default(0),
+  totalAmountBdt: z.coerce.number().nonnegative().multipleOf(0.01).default(0),
+  orderDate: z.string().default(""),
+  deliveryDate: z.string().default(""),
+  status: z.string().default(""),
+});
+
+export const supplierResubmitSchema = z.object({
+  content: z.string().min(10),
+});
+
+export const supplierUploadItemUpdateSchema = z.object({
+  id: cuid.optional(),
+  poNumber: z.string().min(1).optional(),
+  vendorId: z.string().optional(),
+  vendorName: z.string().optional(),
+  sku: z.string().min(1).optional(),
+  itemDescription: z.string().min(1).optional(),
+  category: z.string().optional(),
+  orderQty: z.number().int().nonnegative().optional(),
+  unitPriceBdt: z.coerce.number().nonnegative().multipleOf(0.01).optional(),
+  totalAmountBdt: z.coerce.number().nonnegative().multipleOf(0.01).optional(),
+  orderDate: z.string().optional(),
+  deliveryDate: z.string().optional(),
+  status: z.string().optional(),
+});
+
+export const resubmitWithEditsSchema = z.object({
+  items: z.array(supplierUploadItemUpdateSchema).min(1),
+});
+
+export const supplierUploadAcceptFields = [
+  "itemDescription",
+  "category",
+  "unitPriceBdt",
+] as const;
+export type SupplierUploadAcceptField = (typeof supplierUploadAcceptFields)[number];
+
+export const acceptSupplierUploadSchema = z.object({
+  locationId: cuid,
+  itemIds: z.array(cuid).min(1).optional(),
+  fields: z.array(z.enum(supplierUploadAcceptFields)).optional(),
+});
+
+/** CSV columns the ETL can check. SKU and quantity are always checked. */
+export const supplierUploadEtlColumns = [
+  "po_number",
+  "vendor_id",
+  "vendor_name",
+  "sku",
+  "item_description",
+  "category",
+  "order_qty",
+  "unit_price_bdt",
+  "total_amount_bdt",
+  "order_date",
+  "delivery_date",
+  "status",
+] as const;
+export type SupplierUploadEtlColumn = (typeof supplierUploadEtlColumns)[number];
+
+export const runSupplierUploadEtlSchema = z
+  .object({
+    itemIds: z.array(cuid).min(1).optional(),
+    columns: z.array(z.enum(supplierUploadEtlColumns)).optional(),
+  })
+  .default({});
+
+export const rejectSupplierUploadSchema = z.object({
+  note: z.string().min(1).max(2000),
+});
+
+export const returnIncompleteSchema = z.object({
+  note: z.string().max(2000).optional(),
+});
+
+export const incompleteItemEditSchema = z.object({
+  id: cuid,
+  poNumber: z.string().max(100),
+  vendorId: z.string().max(100),
+  vendorName: z.string().max(200),
+  sku: z.string().max(100),
+  itemDescription: z.string().max(500),
+  category: z.string().max(100),
+  orderQty: z.number().int().nonnegative(),
+  unitPriceBdt: z.number().nonnegative(),
+  totalAmountBdt: z.number().nonnegative(),
+  orderDate: z.string().max(40),
+  deliveryDate: z.string().max(40),
+  status: z.string().max(40),
+});
+
+export const resubmitIncompleteItemsSchema = z.object({
+  items: z
+    .array(incompleteItemEditSchema)
+    .min(1)
+    .max(500)
+    .refine((items) => new Set(items.map((i) => i.id)).size === items.length, {
+      message: "Duplicate row ids in resubmission",
+    }),
+});
+
+// ---------------------------------------------------------------------------
 // Pagination
 // ---------------------------------------------------------------------------
 
@@ -393,3 +525,15 @@ export type ReceivePurchaseOrderInput = z.infer<typeof receivePurchaseOrderSchem
 export type CreateTransferInput = z.infer<typeof createTransferSchema>;
 export type ReceiveTransferInput = z.infer<typeof receiveTransferSchema>;
 export type ApproveReturnInput = z.infer<typeof approveReturnSchema>;
+export type SupplierLoginInput = z.infer<typeof supplierLoginSchema>;
+export type CreateSupplierUserInput = z.infer<typeof createSupplierUserSchema>;
+export type SupplierUploadInput = z.infer<typeof supplierUploadSchema>;
+export type SupplierUploadItemUpdateInput = z.infer<typeof supplierUploadItemUpdateSchema>;
+export type SupplierResubmitInput = z.infer<typeof supplierResubmitSchema>;
+export type ResubmitWithEditsInput = z.infer<typeof resubmitWithEditsSchema>;
+export type AcceptSupplierUploadInput = z.infer<typeof acceptSupplierUploadSchema>;
+export type RunSupplierUploadEtlInput = z.infer<typeof runSupplierUploadEtlSchema>;
+export type RejectSupplierUploadInput = z.infer<typeof rejectSupplierUploadSchema>;
+export type ReturnIncompleteInput = z.infer<typeof returnIncompleteSchema>;
+export type IncompleteItemEdit = z.infer<typeof incompleteItemEditSchema>;
+export type ResubmitIncompleteItemsInput = z.infer<typeof resubmitIncompleteItemsSchema>;

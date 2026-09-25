@@ -121,6 +121,33 @@ enum EventProcessingStatus {
   DUPLICATE
 }
 
+enum SupplierUploadStatus {
+  PENDING
+  REJECTED
+  ACCEPTED
+  INCOMPLETE
+}
+
+enum SupplierItemEtlStatus {
+  NEW
+  GOOD
+  INCOMPLETE
+  RETURNED
+  STOCKED
+}
+
+enum SupplierNotificationType {
+  UPLOAD_RECEIVED
+  REJECTED
+  ACCEPTED
+}
+
+enum VendorNotificationType {
+  UPLOAD_SUBMITTED
+  UPLOAD_RESUBMITTED
+  ROWS_RESUBMITTED
+}
+
 // ---------------------------------------------------------------------------
 // Tenancy & Identity
 // ---------------------------------------------------------------------------
@@ -133,54 +160,59 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users          User[]
-  locations      Location[]
-  postTerminals  PostTerminal[]
-  categories     Category[]
-  brands         Brand[]
-  products       Product[]
-  variants       ProductVariant[]
-  suppliers      Supplier[]
-  inventory      Inventory[]
-  movements      InventoryMovement[]
-  sales          Sale[]
-  salesReturns   SaleReturn[]
-  purchaseOrders PurchaseOrder[]
-  goodsReceipts  GoodsReceipt[]
-  transfers      StockTransfer[]
-  adjustments    StockAdjustment[]
-  events         TransactionEvent[]
-  auditLogs      AuditLog[]
+  users                 User[]
+  locations             Location[]
+  postTerminals         PostTerminal[]
+  categories            Category[]
+  brands                Brand[]
+  products              Product[]
+  variants              ProductVariant[]
+  suppliers             Supplier[]
+  inventory             Inventory[]
+  movements             InventoryMovement[]
+  sales                 Sale[]
+  salesReturns          SaleReturn[]
+  purchaseOrders        PurchaseOrder[]
+  goodsReceipts         GoodsReceipt[]
+  transfers             StockTransfer[]
+  adjustments           StockAdjustment[]
+  events                TransactionEvent[]
+  auditLogs             AuditLog[]
+  supplierUsers         SupplierUser[]
+  supplierUploads       SupplierUpload[]
+  supplierNotifications SupplierNotification[]
+  vendorNotifications   VendorNotification[]
 }
 
 model User {
-  id             String     @id @default(cuid())
+  id             String        @id @default(cuid())
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   name           String
-  email          String     @unique
+  email          String        @unique
   passwordHash   String
-  role           UserRole   @default(VIEWER)
-  status         EntityStatus @default(ACTIVE)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  role           UserRole      @default(VIEWER)
+  status         EntityStatus  @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
   lastLoginAt    DateTime?
 
-  refreshTokens RefreshToken[]
-  adjustments   StockAdjustment[] @relation("AdjustedBy")
-  auditLogs     AuditLog[]
+  refreshTokens       RefreshToken[]
+  adjustments         StockAdjustment[]    @relation("AdjustedBy")
+  auditLogs           AuditLog[]
+  vendorNotifications VendorNotification[]
 
   @@index([organizationId])
 }
 
 model RefreshToken {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String    @unique
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }
@@ -202,16 +234,18 @@ model Location {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  postTerminals  PostTerminal[]
-  inventory      Inventory[]
-  movements      InventoryMovement[]
-  sales          Sale[]
-  salesReturns   SaleReturn[]
-  goodsReceipts  GoodsReceipt[]
-  purchaseOrders PurchaseOrder[]
-  transfersFrom  StockTransfer[] @relation("TransferSource")
-  transfersTo    StockTransfer[] @relation("TransferDestination")
-  adjustments    StockAdjustment[]
+  postTerminals        PostTerminal[]
+  inventory            Inventory[]
+  movements            InventoryMovement[]
+  sales                Sale[]
+  salesReturns         SaleReturn[]
+  goodsReceipts        GoodsReceipt[]
+  purchaseOrders       PurchaseOrder[]
+  transfersFrom        StockTransfer[]      @relation("TransferSource")
+  transfersTo          StockTransfer[]      @relation("TransferDestination")
+  adjustments          StockAdjustment[]
+  supplierUploads      SupplierUpload[]
+  stockedSupplierItems SupplierUploadItem[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -290,15 +324,15 @@ model Product {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  variants       ProductVariant[]
-  saleItems      SaleItem[]
-  saleReturnItems SaleReturnItem[]
+  variants           ProductVariant[]
+  saleItems          SaleItem[]
+  saleReturnItems    SaleReturnItem[]
   purchaseOrderItems PurchaseOrderItem[]
-  goodsReceiptItems GoodsReceiptItem[]
-  transferItems  StockTransferItem[]
-  adjustmentItems StockAdjustmentItem[]
-  inventory      Inventory[]
-  movements      InventoryMovement[]
+  goodsReceiptItems  GoodsReceiptItem[]
+  transferItems      StockTransferItem[]
+  adjustmentItems    StockAdjustmentItem[]
+  inventory          Inventory[]
+  movements          InventoryMovement[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -342,30 +376,31 @@ model Supplier {
   updatedAt      DateTime     @updatedAt
 
   purchaseOrders PurchaseOrder[]
+  portalUsers    SupplierUser[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
 }
 
 model PurchaseOrder {
-  id             String             @id @default(cuid())
+  id             String              @id @default(cuid())
   organizationId String
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  poNumber       String             @unique
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  poNumber       String              @unique
   supplierId     String
-  supplier       Supplier           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  locationId     String             @default("")
-  location       Location?          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  supplier       Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  locationId     String              @default("")
+  location       Location?           @relation(fields: [locationId], references: [id], onDelete: Restrict)
   status         PurchaseOrderStatus @default(DRAFT)
   expectedAt     DateTime?
-  totalAmount    Decimal            @default(0) @db.Decimal(12, 2)
+  totalAmount    Decimal             @default(0) @db.Decimal(12, 2)
   notes          String?
   createdById    String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
-  items          PurchaseOrderItem[]
-  goodsReceipts  GoodsReceipt[]
+  items         PurchaseOrderItem[]
+  goodsReceipts GoodsReceipt[]
 
   @@index([organizationId])
   @@index([supplierId])
@@ -390,17 +425,17 @@ model PurchaseOrderItem {
 }
 
 model GoodsReceipt {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   purchaseOrderId String
-  purchaseOrder  PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  locationId     String
-  location       Location     @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  receiptNumber  String       @unique
-  receivedById   String?
-  notes          String?
-  createdAt      DateTime     @default(now())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  locationId      String
+  location        Location      @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  receiptNumber   String        @unique
+  receivedById    String?
+  notes           String?
+  createdAt       DateTime      @default(now())
 
   items GoodsReceiptItem[]
 
@@ -410,16 +445,16 @@ model GoodsReceipt {
 }
 
 model GoodsReceiptItem {
-  id                String            @id @default(cuid())
-  goodsReceiptId    String
-  goodsReceipt      GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  id                  String            @id @default(cuid())
+  goodsReceiptId      String
+  goodsReceipt        GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
   purchaseOrderItemId String
-  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
-  productId         String
-  product           Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity          Int
-  unitCost          Decimal           @db.Decimal(12, 2)
-  total             Decimal           @db.Decimal(12, 2)
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  productId           String
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity            Int
+  unitCost            Decimal           @db.Decimal(12, 2)
+  total               Decimal           @db.Decimal(12, 2)
 
   @@index([goodsReceiptId])
   @@index([productId])
@@ -430,27 +465,27 @@ model GoodsReceiptItem {
 // ---------------------------------------------------------------------------
 
 model Sale {
-  id             String        @id @default(cuid())
-  organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  storeId        String
-  store          Location      @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  terminalId     String?
-  terminal       PostTerminal? @relation(fields: [terminalId], references: [id], onDelete: SetNull)
-  transactionNumber String     @unique
-  status         SaleStatus    @default(COMPLETED)
-  subtotal       Decimal       @db.Decimal(12, 2)
-  discount       Decimal       @default(0) @db.Decimal(12, 2)
-  tax            Decimal       @default(0) @db.Decimal(12, 2)
-  total          Decimal       @db.Decimal(12, 2)
-  paymentStatus  PaymentStatus @default(PAID)
-  createdById    String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  storeId           String
+  store             Location      @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  terminalId        String?
+  terminal          PostTerminal? @relation(fields: [terminalId], references: [id], onDelete: SetNull)
+  transactionNumber String        @unique
+  status            SaleStatus    @default(COMPLETED)
+  subtotal          Decimal       @db.Decimal(12, 2)
+  discount          Decimal       @default(0) @db.Decimal(12, 2)
+  tax               Decimal       @default(0) @db.Decimal(12, 2)
+  total             Decimal       @db.Decimal(12, 2)
+  paymentStatus     PaymentStatus @default(PAID)
+  createdById       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
-  items       SaleItem[]
-  payments    Payment[]
-  returns     SaleReturn[]
+  items    SaleItem[]
+  payments Payment[]
+  returns  SaleReturn[]
 
   @@index([organizationId])
   @@index([storeId, createdAt])
@@ -508,7 +543,7 @@ model SaleReturn {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  items     SaleReturnItem[]
+  items SaleReturnItem[]
 
   @@index([organizationId])
   @@index([storeId])
@@ -516,16 +551,16 @@ model SaleReturn {
 }
 
 model SaleReturnItem {
-  id             String       @id @default(cuid())
-  returnId       String
-  return         SaleReturn   @relation(fields: [returnId], references: [id], onDelete: Cascade)
-  saleItemId     String?
-  saleItem       SaleItem?    @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
-  productId      String
-  product        Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity       Int
-  unitPrice      Decimal      @db.Decimal(12, 2)
-  total          Decimal      @db.Decimal(12, 2)
+  id         String     @id @default(cuid())
+  returnId   String
+  return     SaleReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItemId String?
+  saleItem   SaleItem?  @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
+  productId  String
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity   Int
+  unitPrice  Decimal    @db.Decimal(12, 2)
+  total      Decimal    @db.Decimal(12, 2)
 
   @@index([returnId])
   @@index([productId])
@@ -581,26 +616,26 @@ model InventoryMovement {
 // ---------------------------------------------------------------------------
 
 model StockTransfer {
-  id                  String         @id @default(cuid())
-  organizationId      String
-  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  transferNumber      String         @unique
-  sourceLocationId    String
-  sourceLocation      Location       @relation("TransferSource", fields: [sourceLocationId], references: [id], onDelete: Restrict)
+  id                    String         @id @default(cuid())
+  organizationId        String
+  organization          Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transferNumber        String         @unique
+  sourceLocationId      String
+  sourceLocation        Location       @relation("TransferSource", fields: [sourceLocationId], references: [id], onDelete: Restrict)
   destinationLocationId String
-  destinationLocation Location       @relation("TransferDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
-  status              TransferStatus @default(DRAFT)
-  createdById         String?
-  approvedById        String?
-  shippedById         String?
-  receivedById        String?
-  notes               String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-  approvedAt          DateTime?
-  shippedAt           DateTime?
-  receivedAt          DateTime?
-  cancelledAt         DateTime?
+  destinationLocation   Location       @relation("TransferDestination", fields: [destinationLocationId], references: [id], onDelete: Restrict)
+  status                TransferStatus @default(DRAFT)
+  createdById           String?
+  approvedById          String?
+  shippedById           String?
+  receivedById          String?
+  notes                 String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  approvedAt            DateTime?
+  shippedAt             DateTime?
+  receivedAt            DateTime?
+  cancelledAt           DateTime?
 
   items StockTransferItem[]
 
@@ -611,13 +646,13 @@ model StockTransfer {
 }
 
 model StockTransferItem {
-  id             String        @id @default(cuid())
-  transferId     String
-  transfer       StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  productId      String
-  product        Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity       Int
-  receivedQuantity Int         @default(0)
+  id               String        @id @default(cuid())
+  transferId       String
+  transfer         StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity         Int
+  receivedQuantity Int           @default(0)
 
   @@index([transferId])
   @@index([productId])
@@ -649,13 +684,13 @@ model StockAdjustment {
 }
 
 model StockAdjustmentItem {
-  id               String          @id @default(cuid())
-  adjustmentId     String
-  adjustment       StockAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
-  productId        String
-  product          Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-  quantity         Int
-  reason           AdjustmentReason @default(MANUAL_CORRECTION)
+  id           String           @id @default(cuid())
+  adjustmentId String
+  adjustment   StockAdjustment  @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity     Int
+  reason       AdjustmentReason @default(MANUAL_CORRECTION)
 
   @@index([adjustmentId])
   @@index([productId])
@@ -666,10 +701,10 @@ model StockAdjustmentItem {
 // ---------------------------------------------------------------------------
 
 model TransactionEvent {
-  id             String              @id @default(cuid())
-  eventId        String              @unique
+  id             String                @id @default(cuid())
+  eventId        String                @unique
   organizationId String
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   storeId        String
   terminalId     String?
   type           EventType
@@ -677,7 +712,7 @@ model TransactionEvent {
   status         EventProcessingStatus @default(RECEIVED)
   transactionId  String?
   error          String?
-  createdAt      DateTime            @default(now())
+  createdAt      DateTime              @default(now())
   processedAt    DateTime?
 
   @@index([eventId])
@@ -710,4 +745,140 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([userId])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Supplier portal — suppliers upload product files, vendors accept into stock
+// ---------------------------------------------------------------------------
+
+model SupplierUser {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierId     String?
+  supplier       Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  name           String
+  email          String       @unique
+  passwordHash   String
+  phone          String?
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  uploads       SupplierUpload[]
+  notifications SupplierNotification[]
+  refreshTokens SupplierRefreshToken[]
+
+  @@index([organizationId])
+  @@index([supplierId])
+}
+
+model SupplierRefreshToken {
+  id             String       @id @default(cuid())
+  supplierUserId String
+  supplierUser   SupplierUser @relation(fields: [supplierUserId], references: [id], onDelete: Cascade)
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([supplierUserId])
+}
+
+model SupplierUpload {
+  id              String               @id @default(cuid())
+  organizationId  String
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierUserId  String
+  supplierUser    SupplierUser         @relation(fields: [supplierUserId], references: [id], onDelete: Cascade)
+  originalName    String
+  mimeType        String               @default("text/csv")
+  fileSize        Int                  @default(0)
+  fileContent     String
+  rowCount        Int                  @default(0)
+  status          SupplierUploadStatus @default(PENDING)
+  submissionCount Int                  @default(1)
+  issues          Json?
+  vendorNote      String?
+  locationId      String?
+  location        Location?            @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  acceptedById    String?
+  acceptedAt      DateTime?
+  rejectedAt      DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  items               SupplierUploadItem[]
+  notifications       SupplierNotification[]
+  vendorNotifications VendorNotification[]
+
+  @@index([organizationId])
+  @@index([supplierUserId])
+  @@index([organizationId, status])
+}
+
+model SupplierUploadItem {
+  id                String                @id @default(cuid())
+  uploadId          String
+  upload            SupplierUpload        @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  poNumber          String
+  vendorId          String                @default("")
+  vendorName        String                @default("")
+  sku               String
+  itemDescription   String
+  category          String                @default("")
+  orderQty          Int                   @default(0)
+  unitPriceBdt      Decimal               @default(0) @db.Decimal(12, 2)
+  totalAmountBdt    Decimal               @default(0) @db.Decimal(12, 2)
+  orderDate         String?               @default("")
+  deliveryDate      String?               @default("")
+  status            String?               @default("")
+  missingFields     Json?
+  etlStatus         SupplierItemEtlStatus @default(NEW)
+  stockedLocationId String?
+  stockedLocation   Location?             @relation(fields: [stockedLocationId], references: [id], onDelete: Restrict)
+  stockedAt         DateTime?
+  createdAt         DateTime              @default(now())
+
+  @@index([uploadId])
+  @@index([uploadId, etlStatus])
+  @@index([sku])
+}
+
+model SupplierNotification {
+  id             String                   @id @default(cuid())
+  organizationId String
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierUserId String
+  supplierUser   SupplierUser             @relation(fields: [supplierUserId], references: [id], onDelete: Cascade)
+  uploadId       String
+  upload         SupplierUpload           @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  type           SupplierNotificationType @default(UPLOAD_RECEIVED)
+  message        String                   @default("")
+  readAt         DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime                 @default(now())
+
+  @@index([supplierUserId])
+  @@index([supplierUserId, readAt])
+  @@index([uploadId])
+}
+
+/// Staff-side alert that a supplier sent work for review. One row per
+/// recipient so each staff user has their own read state.
+model VendorNotification {
+  id             String                 @id @default(cuid())
+  organizationId String
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  uploadId       String
+  upload         SupplierUpload         @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  type           VendorNotificationType
+  message        String
+  readAt         DateTime?
+  createdAt      DateTime               @default(now())
+
+  @@index([userId, readAt])
+  @@index([uploadId])
 }

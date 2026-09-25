@@ -8,6 +8,7 @@ import {
 import { randomUUID } from "crypto";
 import { Observable } from "rxjs";
 import { tap } from "rxjs/operators";
+import { isSseHandler } from "./response.interceptor";
 
 interface RequestMeta {
   requestId: string;
@@ -30,6 +31,8 @@ export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger("HTTP");
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    // A stream emits for as long as it is open; don't log every event.
+    if (isSseHandler(context)) return next.handle();
     const ctx = context.switchToHttp();
     const request = ctx.getRequest<Record<string, any>>();
     const { method, originalUrl, headers } = request;

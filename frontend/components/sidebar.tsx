@@ -1,25 +1,55 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { logout } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiFetch, getToken, logout, refreshSession } from "@/lib/api";
+import { useNotificationStream, type StreamEvent, type StreamSource } from "@/lib/notification-stream";
+import { NotificationToasts, useToasts } from "@/components/toast";
 import { cn } from "@/components/ui";
 import { Icon, type IconName } from "@/components/icons";
 
 const NAV: Array<{ href: string; label: string; icon: IconName; group: "Workspace" | "Operations" }> = [
   { href: "/dashboard", label: "Overview", icon: "dashboard", group: "Workspace" },
   { href: "/pos", label: "Point of sale", icon: "pos", group: "Workspace" },
+  { href: "/notifications", label: "Notifications", icon: "bell", group: "Workspace" },
   { href: "/inventory", label: "Inventory", icon: "inventory", group: "Operations" },
   { href: "/products", label: "Products", icon: "products", group: "Operations" },
+  { href: "/supplier-uploads", label: "Supplier uploads", icon: "uploads", group: "Operations" },
+  { href: "/suppliers", label: "Suppliers", icon: "suppliers", group: "Operations" },
   { href: "/stores", label: "Locations", icon: "stores", group: "Operations" },
   { href: "/transactions", label: "Transactions", icon: "transactions", group: "Operations" },
   { href: "/reports", label: "Reports", icon: "reports", group: "Operations" },
   { href: "/ai-insights", label: "AI Insights", icon: "ai", group: "Operations" },
 ];
 
+const STREAM: StreamSource = { path: "/notifications/stream", getToken, refresh: refreshSession };
+
+/** Queries a staff notification event may have made stale. */
+const LIVE_QUERY_KEYS = ["vendor-notifications", "manage-supplier-uploads", "manage-supplier-upload"];
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: notifications } = useQuery({
+    queryKey: ["vendor-notifications"],
+    queryFn: () => apiFetch<{ unread: number }>("/notifications"),
+  });
+  const unread = notifications?.unread ?? 0;
+
+  const { toasts, push, dismiss } = useToasts();
+  const onStreamEvent = useCallback(
+    ({ message }: StreamEvent) => {
+      queryClient.invalidateQueries({
+        predicate: (q) => LIVE_QUERY_KEYS.includes(String(q.queryKey[0])),
+      });
+      if (message) push(message);
+    },
+    [queryClient, push],
+  );
+  useNotificationStream(STREAM, onStreamEvent);
 
   const handleLogout = async () => {
     await logout();
@@ -61,7 +91,10 @@ export function Sidebar() {
                     )}
                   >
                     <Icon name={item.icon} className={cn("h-[18px] w-[18px]", active ? "text-teal-700" : "text-zinc-400 group-hover:text-zinc-700")} />
-                    <span className="whitespace-nowrap">{item.label}</span>
+                    <span className="flex-1 whitespace-nowrap">{item.label}</span>
+                    {item.href === "/notifications" && unread > 0 ? (
+                      <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">{unread}</span>
+                    ) : null}
                   </Link>
                 );
               })}
@@ -84,6 +117,7 @@ export function Sidebar() {
           <Icon name="logout" className="h-[18px] w-[18px]" /> Log out
         </button>
       </div>
+      <NotificationToasts toasts={toasts} dismiss={dismiss} href="/notifications" />
     </aside>
   );
 }
