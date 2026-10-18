@@ -122,6 +122,13 @@ export default function SupplierIncompletePage() {
       (item.missingFields ?? []).includes("duplicate_sku") &&
       row[key] === String(item[key] ?? ""));
 
+  const incompleteReasons = (item: IncompleteItem, row: EditableRow) => {
+    const flagged = ETL_COLUMNS.filter((c) => isFlagged(item, row, c.column, c.key));
+    const duplicate = flagged.some((c) => c.column === "sku" && row.sku.trim() !== "");
+    const empty = flagged.filter((c) => !(c.column === "sku" && duplicate)).map((c) => c.label);
+    return [...(duplicate ? ["Duplicate SKU"] : []), ...(empty.length > 0 ? [`Missing: ${empty.join(", ")}`] : [])];
+  };
+
   return (
     <div className="space-y-7">
       <PageHeader
@@ -194,6 +201,9 @@ export default function SupplierIncompletePage() {
                             {c.label}
                           </th>
                         ))}
+                        <th className="whitespace-nowrap px-2 py-3 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-500">
+                          Incomplete
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100 bg-white">
@@ -225,6 +235,22 @@ export default function SupplierIncompletePage() {
                                 />
                               </td>
                             ))}
+                            <td className="px-2 py-1">
+                              {(() => {
+                                const reasons = incompleteReasons(item, row);
+                                return reasons.length > 0 ? (
+                                  <div className="flex min-w-[9rem] flex-col items-start gap-1">
+                                    {reasons.map((r) => (
+                                      <Badge key={r} color="red">
+                                        {r}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <Badge color="green">✓ Ready</Badge>
+                                );
+                              })()}
+                            </td>
                           </tr>
                         );
                       })}
