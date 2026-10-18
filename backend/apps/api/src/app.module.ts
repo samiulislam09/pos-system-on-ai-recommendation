@@ -21,6 +21,7 @@ import { QueueModule } from "./queue/queue.module";
 import { PosModule } from "./pos/pos.module";
 import { AiModule } from "./ai/ai.module";
 import { SupplierPortalModule } from "./supplier-portal/supplier-portal.module";
+import { OlapModule } from "./olap/olap.module";
 import { GlobalExceptionFilter } from "./common/filters/global-exception.filter";
 import { ResponseInterceptor } from "./common/interceptors/response.interceptor";
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
@@ -53,6 +54,7 @@ import { PermissionsGuard } from "./common/guards/permissions.guard";
     PosModule,
     AiModule,
     SupplierPortalModule,
+    OlapModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
