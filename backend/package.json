@@ -21,6 +21,8 @@
     "db:migrate": "npm run db:migrate -w @inv/database",
     "db:deploy": "npm run db:deploy -w @inv/database",
     "db:seed": "npm run db:seed -w @inv/database",
+    "db:seed-analytics": "npm run seed:analytics -w @inv/api --",
+    "db:clean-analytics": "npm run clean:analytics -w @inv/api",
     "db:studio": "npm run db:studio -w @inv/database"
   },
   "devDependencies": {

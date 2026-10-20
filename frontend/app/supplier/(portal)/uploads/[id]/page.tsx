@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { use, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supplierApiFetch } from "@/lib/supplier-api";
+import { isExcelFile, isLegacyExcelFile, xlsxToCsv } from "@/lib/xlsx-to-csv";
 import {
   Badge,
   Button,
@@ -81,6 +82,7 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
   const [resubmitContent, setResubmitContent] = useState("");
   const [resubmitError, setResubmitError] = useState<string | null>(null);
   const [resubmitLoading, setResubmitLoading] = useState(false);
+  const [resubmitReading, setResubmitReading] = useState(false);
 
   const resubmitMutation = useMutation({
     mutationFn: (content: string) =>
@@ -98,11 +100,31 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
     },
   });
 
-  const readResubmitFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readResubmitFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setResubmitFile(file);
     setResubmitError(null);
+
+    if (isLegacyExcelFile(file)) {
+      setResubmitFile(null);
+      setResubmitError("Old .xls files aren't supported. Save the file as .xlsx (Excel Workbook) or CSV and try again.");
+      return;
+    }
+
+    if (isExcelFile(file)) {
+      setResubmitReading(true);
+      try {
+        setResubmitContent(await xlsxToCsv(file));
+      } catch (err) {
+        setResubmitFile(null);
+        setResubmitError(err instanceof Error ? err.message : "Could not read the Excel file");
+      } finally {
+        setResubmitReading(false);
+      }
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result;
@@ -113,7 +135,7 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
 
   const handleResubmit = () => {
     if (!resubmitContent.trim()) {
-      setResubmitError("Please select a corrected CSV file or paste the corrected content");
+      setResubmitError("Please select a corrected CSV or Excel file, or paste the corrected content");
       return;
     }
     setResubmitLoading(true);
@@ -219,16 +241,16 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
           <CardHeader className="pb-2">
             <CardTitle className="text-teal-800">Resubmit corrected file</CardTitle>
             <p className="text-xs text-teal-700">
-              Upload a corrected CSV with the same column headers. The vendor will review your new submission.
+              Upload a corrected CSV or Excel (.xlsx) file with the same column headers. For Excel, the first worksheet is used. The vendor will review your new submission.
             </p>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                Select corrected CSV file
+                Select corrected CSV or Excel file
                 <input
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={readResubmitFile}
                   className="min-h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-zinc-700 hover:file:bg-zinc-200"
                 />
@@ -236,6 +258,7 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
               {resubmitFile && (
                 <div className="rounded-lg border border-zinc-200 bg-white p-3 text-xs text-zinc-600">
                   Selected: {resubmitFile.name}
+                  {isExcelFile(resubmitFile) && !resubmitReading && " (converted to CSV below)"}
                 </div>
               )}
               <label className="grid gap-2 text-sm font-semibold text-zinc-700">
@@ -248,11 +271,12 @@ export default function SupplierUploadDetailPage({ params }: { params: Promise<{
                   placeholder="po_number,vendor_id,vendor_name,sku,item_description,category,order_qty,unit_price_bdt,total_amount_bdt,order_date,delivery_date,status"
                 />
               </label>
+              {resubmitReading && <p className="text-sm text-zinc-500">Reading Excel file...</p>}
               {resubmitError ? (
                 <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{resubmitError}</p>
               ) : null}
               <div className="flex gap-2">
-                <Button onClick={handleResubmit} disabled={resubmitLoading || !resubmitContent.trim()}>
+                <Button onClick={handleResubmit} disabled={resubmitLoading || resubmitReading || !resubmitContent.trim()}>
                   {resubmitLoading ? "Submitting..." : "Resubmit for review"}
                 </Button>
                 <Button variant="outline" onClick={() => { setShowResubmit(false); setResubmitContent(""); setResubmitFile(null); }}>
