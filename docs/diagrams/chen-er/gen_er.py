@@ -7,7 +7,8 @@ Relations -> blue diamonds with 1 / n cardinalities (identifying ones double)
 import re, sys, json
 
 SCHEMA = sys.argv[1]
-MODE = sys.argv[2] if len(sys.argv) > 2 else "full"   # full | lean
+MODE = sys.argv[2] if len(sys.argv) > 2 else "full"   # full | lean | keys
+# keys: entities + primary keys + foreign keys only (Organization edges as in lean)
 OUT = sys.argv[3] if len(sys.argv) > 3 else "/dev/stdout"
 
 src = open(SCHEMA).read()
@@ -87,18 +88,31 @@ for mname, fields in models.items():
             cols = [c.strip() for c in mm.group(1).split(",")]
             fk_cols.update(cols)
             optional = f["type"].endswith("?")
-            rels.append(dict(child=mname, field=f["name"], parent=base, optional=optional))
+            rels.append(dict(child=mname, field=f["name"], parent=base, optional=optional, cols=cols))
+    skip_fk = set()
+    for r in rels:
+        if MODE in ("lean", "keys") and r["parent"] == "Organization" and mname not in lean_org:
+            skip_fk.update(r["cols"])
     attrs = []
     for f in fields:
         base = f["type"].rstrip("?[]")
-        if base in model_names or f["name"] in fk_cols:
+        if base in model_names:
             continue
-        attrs.append(dict(name=f["name"], pk="@id" in f["attrs"], unique="@unique" in f["attrs"],
+        is_pk = "@id" in f["attrs"]
+        is_fk = f["name"] in fk_cols
+        if MODE == "keys":
+            if not (is_pk or is_fk):
+                continue
+            if is_fk and f["name"] in skip_fk:
+                continue  # Organization FK dropped alongside its lean-mode edge
+        elif is_fk:
+            continue
+        attrs.append(dict(name=f["name"], pk=is_pk, fk=is_fk, unique="@unique" in f["attrs"],
                           optional=f["type"].endswith("?"), type=base))
     entities.append(dict(name=mname, weak=mname in weak))
     attributes.append((mname, attrs))
     for r in rels:
-        if MODE == "lean" and r["parent"] == "Organization" and mname not in lean_org:
+        if MODE in ("lean", "keys") and r["parent"] == "Organization" and mname not in lean_org:
             continue
         relations.append(r)
 
@@ -106,7 +120,9 @@ def esc(s): return s.replace('"', '\\"')
 
 out = []
 out.append('graph ER {')
-out.append('  graph [layout=neato, overlap=vpsc, mode=major, splines=true, sep="+18", start=42, bgcolor="transparent", pad=0.4, outputorder=edgesfirst, fontname="Helvetica"];')
+SEP = '"+12"' if MODE == "keys" else '"+18"'
+RLEN = 2.6 if MODE == "keys" else 3.4   # entity -- diamond edge length
+out.append(f'  graph [layout=neato, overlap=vpsc, mode=major, splines=true, sep={SEP}, start=42, bgcolor="transparent", pad=0.4, outputorder=edgesfirst, fontname="Helvetica"];')
 out.append('  node  [fontname="Helvetica", fontsize=11, penwidth=1.3];')
 out.append('  edge  [color="#6b6f7a", penwidth=1.1, fontname="Helvetica-Bold", fontsize=12, fontcolor="#1d2433"];')
 for e in entities:
@@ -115,10 +131,17 @@ for e in entities:
 for mname, attrs in attributes:
     for a in attrs:
         nid = f'{mname}.{a["name"]}'
-        label = f'<U><B>{a["name"]}</B></U>' if a["pk"] else a["name"]
+        if a["pk"]:
+            label = f'<U><B>{a["name"]}</B></U>'
+        elif a.get("fk"):
+            label = f'<I>{a["name"]}</I> <FONT POINT-SIZE="8">(FK)</FONT>'
+        else:
+            label = a["name"]
         style = "filled,dashed" if a["unique"] and not a["pk"] else "filled"
-        color = "#c62828" if a["pk"] else ("#b03a6b" if a["unique"] else "#c86b8a")
-        out.append(f'  "{nid}" [shape=ellipse, label=<{label}>, style="{style}", fillcolor="#fbd9e2", color="{color}", fontcolor="#3a1f2a", margin="0.04,0.01", tooltip="{esc(a["type"]) + ("?" if a["optional"] else "")}"];')
+        color = "#c62828" if a["pk"] else ("#b03a6b" if a["unique"] else ("#5c6bc0" if a.get("fk") else "#c86b8a"))
+        fill = "#e3e8fb" if a.get("fk") and not a["pk"] else "#fbd9e2"
+        tip = esc(a["type"]) + ("?" if a["optional"] else "")
+        out.append(f'  "{nid}" [shape=ellipse, label=<{label}>, style="{style}", fillcolor="{fill}", color="{color}", fontcolor="#3a1f2a", margin="0.04,0.01", tooltip="{tip}"];')
         out.append(f'  "{mname}" -- "{nid}" [penwidth=0.9, color="#8a8f9a", len=1.3];')
 for i, r in enumerate(relations):
     rid = f'rel{i}'
@@ -126,8 +149,8 @@ for i, r in enumerate(relations):
     identifying = weak.get(r["child"]) == r["field"]
     per = 2 if identifying else 1
     out.append(f'  "{rid}" [shape=diamond, label="{esc(label)}", style="filled", fillcolor="#aebdf5", color="#2d3fb0", fontcolor="#0f1a5c", peripheries={per}, width=1.3, height=0.8, margin="0.02,0.02", fixedsize=false];')
-    out.append(f'  "{r["parent"]}" -- "{rid}" [taillabel="1", len=3.4];')
-    out.append(f'  "{rid}" -- "{r["child"]}" [headlabel="n", len=3.4, penwidth={2.2 if identifying else 1.1}];')
+    out.append(f'  "{r["parent"]}" -- "{rid}" [taillabel="1", len={RLEN}];')
+    out.append(f'  "{rid}" -- "{r["child"]}" [headlabel="n", len={RLEN}, penwidth={2.2 if identifying else 1.1}];')
 out.append('}')
 open(OUT, "w").write("\n".join(out))
 stats = dict(entities=len(entities), attributes=sum(len(a) for _, a in attributes), relations=len(relations))
