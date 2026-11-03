@@ -106,6 +106,113 @@ LAYOUTS = {
         # fix the 1 / n sides where the parent is listed second above (Organization employs User)
         flip={"employs"},
     ),
+    "full33": dict(
+        title="POS data model  ·  Chen ER (33 tables, keys only)",
+        col_w=520, row_h=300, origin=(1400, 420),
+        org_roots={"User", "Location", "Category", "Brand", "Product", "Supplier", "SupplierUser", "TransactionEvent", "AuditLog"},
+        weak={"PurchaseOrderItem", "GoodsReceiptItem", "SaleItem", "Payment", "SaleReturnItem",
+              "StockTransferItem", "StockAdjustmentItem", "SupplierUploadItem"},
+        entities={
+            # auth / tenancy
+            "AuditLog":              (1, -1, "auto"),
+            "TransactionEvent":      (2, -1, "auto"),
+            "RefreshToken":          (0, 0, "auto"),
+            "User":                  (1, 0, "auto"),
+            "Organization":          (2, 0, "auto"),
+            # catalog
+            "Category":              (3, 0, "auto"),
+            "ProductVariant":        (2, 1, "auto"),
+            "Brand":                 (4, 1, "auto"),
+            "Product":               (3, 2, "auto"),
+            # procurement
+            "Supplier":              (0, 2, "auto"),
+            "PurchaseOrderItem":     (2, 2, "auto"),
+            "PurchaseOrder":         (1, 3, "auto"),
+            "GoodsReceiptItem":      (2, 3, "auto"),
+            "GoodsReceipt":          (1, 4, "auto"),
+            # inventory
+            "InventoryMovement":     (3, 4, "auto"),
+            "Inventory":             (4, 3, "auto"),
+            "StockTransferItem":     (4, 5, "auto"),
+            "StockTransfer":         (4, 6, "auto"),
+            "Location":              (3, 5, "auto"),
+            "StockAdjustment":       (0, 5, "auto"),
+            "StockAdjustmentItem":   (1.9, 6, "auto"),
+            # sales
+            "SaleItem":              (5, 1, "auto"),
+            "Payment":               (7, 1, "auto"),
+            "Sale":                  (7, 2, "auto"),
+            "SaleReturnItem":        (5, 3, "auto"),
+            "SaleReturn":            (7, 3, "auto"),
+            "PostTerminal":          (6, 4, "auto"),
+            # supplier portal
+            "VendorNotification":    (-2, 1, "auto"),
+            "SupplierUser":          (0, 3, "auto"),
+            "SupplierRefreshToken":  (-1, 3, "auto"),
+            "SupplierNotification":  (-1, 4, "auto"),
+            "SupplierUpload":        (0, 4, "auto"),
+            "SupplierUploadItem":    (-1, 6, "auto"),
+        },
+        relations=[
+            ("User",            "Organization",       "employs",        "auto",  "auto"),
+            ("User",            "RefreshToken",       "issued to",      "auto",  "auto"),
+            ("User",            "AuditLog",           "performed by",   "auto",  "auto"),
+            ("Organization",    "AuditLog",           "owns",           "auto",  "auto"),
+            ("Organization",    "TransactionEvent",   "receives",       "auto",  "auto"),
+            ("Organization",    "Category",           "defines",        "auto",  "auto"),
+            ("Organization",    "Brand",              "defines",        "auto",  "auto"),
+            ("Organization",    "Product",            "catalogs",       "auto",  "auto"),
+            ("Organization",    "Supplier",           "contracts",      "auto",  "auto"),
+            ("Organization",    "SupplierUser",       "registers",      "auto",  "auto"),
+            ("Category",        "Category",           "parent of",      "self",  None),
+            ("Category",        "Product",            "classified in",  "auto",  "auto"),
+            ("Brand",           "Product",            "made by",        "auto",  "auto"),
+            ("Product",         "ProductVariant",     "variant of",     "auto",  "auto"),
+            ("Supplier",        "PurchaseOrder",      "ordered from",   "auto",  "auto"),
+            ("PurchaseOrder",   "PurchaseOrderItem",  "contains",       "auto",  "auto"),
+            ("Product",         "PurchaseOrderItem",  "orders",         "auto",  "auto"),
+            ("PurchaseOrder",   "GoodsReceipt",       "fulfils",        "auto",  "auto"),
+            ("GoodsReceipt",    "GoodsReceiptItem",   "contains",       "auto",  "auto"),
+            ("PurchaseOrderItem","GoodsReceiptItem",  "receives",       "auto",  "auto"),
+            ("Product",         "GoodsReceiptItem",   "stocks",         "auto",  "auto"),
+            ("Location",        "PurchaseOrder",      "delivered to",   "auto",  "auto"),
+            ("Location",        "GoodsReceipt",       "received at",    "auto",  "auto"),
+            ("Product",         "Inventory",          "stock of",       "auto",  "auto"),
+            ("Product",         "InventoryMovement",  "moves",          "auto",  "auto"),
+            ("Location",        "Inventory",          "held at",        "auto",  "auto"),
+            ("Location",        "InventoryMovement",  "occurs at",      "auto",  "auto"),
+            ("Product",         "StockTransferItem",  "transfers",      "auto",  "auto"),
+            ("StockTransfer",   "StockTransferItem",  "contains",       "auto",  "auto"),
+            ("Location",        "StockTransfer",      "ships from",     "auto",  "auto"),
+            ("Location",        "StockTransfer",      "ships to",       [(3, 5), (3, 6), (4, 6)], (3.5, 6)),
+            ("Product",         "StockAdjustmentItem","adjusts",        [(3, 2), (2.35, 3.1), (1.9, 6)],  "auto"),
+            ("StockAdjustment", "StockAdjustmentItem","contains",       "auto",  "auto"),
+            ("Location",        "StockAdjustment",    "adjusts at",     "auto",  "auto"),
+            ("User",            "StockAdjustment",    "created by",     [(1, 0), (0.75, -0.5), (-1.8, -0.5), (-1.8, 5), (0, 5)], (-1.8, 2.5)),
+            ("Product",         "SaleItem",           "sells",          "auto",  "auto"),
+            ("Sale",            "SaleItem",           "contains",       "auto",  "auto"),
+            ("Sale",            "Payment",            "pays for",       "auto",  "auto"),
+            ("Sale",            "SaleReturn",         "reverses",       "auto",  "auto"),
+            ("SaleReturn",      "SaleReturnItem",     "contains",       "auto",  "auto"),
+            ("SaleItem",        "SaleReturnItem",     "reverses",       "auto",  "auto"),
+            ("Product",         "SaleReturnItem",     "returns",        "auto",  "auto"),
+            ("Location",        "Sale",               "sold at",        "auto",  "auto"),
+            ("Location",        "SaleReturn",         "returned at",    "auto",  "auto"),
+            ("PostTerminal",    "Sale",               "rung on",        "auto",  "auto"),
+            ("Location",        "PostTerminal",       "installed at",   "auto",  "auto"),
+            ("Supplier",        "SupplierUser",       "works for",      "auto",  "auto"),
+            ("SupplierUser",    "SupplierRefreshToken","issued to",     "auto",  "auto"),
+            ("SupplierUser",    "SupplierUpload",     "uploaded by",    "auto",  "auto"),
+            ("Location",        "SupplierUpload",     "accepted into",  "auto",  "auto"),
+            ("SupplierUpload",  "SupplierUploadItem", "contains",       "auto",  "auto"),
+            ("Location",        "SupplierUploadItem", "stocked at",     "auto",  "auto"),
+            ("SupplierUser",    "SupplierNotification","notifies",      "auto",  "auto"),
+            ("SupplierUpload",  "SupplierNotification","about",         "auto",  "auto"),
+            ("User",            "VendorNotification", "notifies",       "auto",  "auto"),
+            ("SupplierUpload",  "VendorNotification", "about",          "auto",  "auto"),
+        ],
+        flip={"employs"},
+    ),
 }
 
 L = LAYOUTS[LAYOUT_NAME]
@@ -209,45 +316,68 @@ def attribute(cx, cy, name, kind):
                      f'font-style="italic" fill="{C["att_text"]}">{esc(name)}'
                      f'<tspan font-size="9" font-style="normal" dy="-1"> (FK)</tspan></text>')
 
-# entities + attributes
+OBST, SEGS = [], []   # (name, x0, y0, x1, y1, owners) / (tag, pts, owners)  for the collision check
+
+# ----------------------------------------------------------------------------- placement
+# 1. entity boxes  2. relation paths (depend on boxes only)  3. diamonds  4. attributes.
+# Diamonds and attributes with side "auto" are placed by trying candidates and keeping the first
+# that collides with nothing already placed (lines are sampled every 4px).
+def bbox_hit(a, b, pad=6):
+    return a[0] < b[2] + pad and b[0] < a[2] + pad and a[1] < b[3] + pad and b[1] < a[3] + pad
+
+def seg_hits_box(p, q, box, pad=4):
+    x0, y0, x1, y1 = box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad
+    n = max(2, int(math.dist(p, q) / 4))
+    for i in range(n + 1):
+        t = i / n
+        x, y = p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t
+        if x0 <= x <= x1 and y0 <= y <= y1:
+            return True
+    return False
+
+OBST, SEGS = [], []   # (name, x0, y0, x1, y1, owners) / (tag, pts, owners)
+def box_free(box, owners, pad=6):
+    for name, x0, y0, x1, y1, own in OBST:
+        if own & owners:
+            continue
+        if bbox_hit(box, (x0, y0, x1, y1), pad):
+            return False
+    for tag, pts, own in SEGS:
+        if own & owners:
+            continue
+        for i in range(len(pts) - 1):
+            if seg_hits_box(pts[i], pts[i + 1], box, pad):
+                return False
+    return True
+
 for name, (c, r, side) in L["entities"].items():
     cx, cy = ent_px[name]
     entity(name, cx, cy, name in L["weak"])
-    drop = set(model_names) - set(L["entities"])
-    if name not in L["org_roots"]:
-        drop.add("Organization")
-    keys = keys_of(name, drop_fk=drop)
-    n = len(keys)
-    for i, (kname, kind) in enumerate(keys):
-        off = i - (n - 1) / 2
-        if isinstance(side, list):
-            ax, ay = cx + side[i][0], cy + side[i][1]
-        elif side.startswith("left"):
-            ax, ay = cx - EW / 2 - 70 - AW / 2, cy + off * (AH + 10)
-        elif side.startswith("right"):
-            ax, ay = cx + EW / 2 + 70 + AW / 2, cy + off * (AH + 10)
-            if side == "right-up":
-                ay -= 30
-        elif side.startswith("top"):
-            ax, ay = cx + off * (AW + 8), cy - EH / 2 - 56
-        else:  # bottom
-            ax, ay = cx + off * (AW + 8), cy + EH / 2 + 56
-        p = clip_rect(cx, cy, EW, EH, ax, ay)
-        q = clip_rect(ax, ay, AW, AH, cx, cy)
-        line(p, q, width=1.3, color="#9aa3af")
-        attribute(ax, ay, kname, kind)
+    OBST.append(("entity:" + name, cx - EW/2, cy - EH/2, cx + EW/2, cy + EH/2, {name}))
 
-# relations
+# relation paths
+rel_geom = []
 for parent, child, label, route, dpos in L["relations"]:
-    identifying = child in L["weak"] and label == "contains" or (child == "Payment")
+    identifying = child in L["weak"] and label in L.get("identifying", {"contains", "pays for"})
     P, Ch = ent_px[parent], ent_px[child]
-    if route == "self":
-        # loop to the right of the entity: two short stubs into a diamond
-        cx, cy = P[0] + EW / 2 + 110, P[1]
-        a = (P[0] + EW / 2, P[1] - 12); b = (P[0] + EW / 2, P[1] + 12)
-        line(a, (cx, cy - 12)); line(b, (cx, cy + 12))
-        card(a, (cx, cy - 12), "1"); card(b, (cx, cy + 12), "n")
+    tag = f"{parent}->{child} ({label})"
+    if isinstance(route, str) and route.startswith("self"):
+        side = route[5:] or "right"
+        if side in ("right", "left"):
+            sgn = 1 if side == "right" else -1
+            cx, cy = P[0] + sgn * (EW / 2 + 110), P[1]
+            a = (P[0] + sgn * EW / 2, P[1] - 12); b = (P[0] + sgn * EW / 2, P[1] + 12)
+            segs = [(a, (cx - sgn * DW / 2, cy - 12)), (b, (cx - sgn * DW / 2, cy + 12))]
+        else:
+            sgn = 1 if side == "bottom" else -1
+            cx, cy = P[0], P[1] + sgn * (EH / 2 + 80)
+            a = (P[0] - 14, P[1] + sgn * EH / 2); b = (P[0] + 14, P[1] + sgn * EH / 2)
+            segs = [(a, (cx - 14, cy - sgn * DH / 2)), (b, (cx + 14, cy - sgn * DH / 2))]
+        for p_, q_ in segs:
+            line(p_, q_); SEGS.append((tag, [p_, q_], {parent, tag}))
+        card(segs[0][0], segs[0][1], "1"); card(segs[1][0], segs[1][1], "n")
         diamond(cx, cy, label)
+        OBST.append(("diamond:" + tag, cx - DW/2, cy - DH/2, cx + DW/2, cy + DH/2, {tag}))
         continue
     if route == "auto":
         pts = [clip_rect(*P, EW, EH, *Ch), clip_rect(*Ch, EW, EH, *P)]
@@ -261,11 +391,114 @@ for parent, child, label, route, dpos in L["relations"]:
     one, many = ("n", "1") if label in L["flip"] else ("1", "n")
     card(pts[0], pts[1], one)
     card(pts[-1], pts[-2], many)
+    SEGS.append((tag, pts, {parent, child, tag}))
+    rel_geom.append((tag, parent, child, label, pts, dpos, identifying))
+
+# diamonds
+for tag, parent, child, label, pts, dpos, identifying in rel_geom:
     if isinstance(dpos, tuple):
-        dx, dy = G(*dpos)
+        cands = [G(*dpos)]
+    elif dpos == "auto":
+        cands = [point_at(pts, t) for t in (0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74, 0.2, 0.8)]
     else:
-        dx, dy = point_at(pts, dpos)
+        cands = [point_at(pts, dpos)]
+    chosen = None
+    for dx, dy in cands:
+        box = (dx - DW/2, dy - DH/2, dx + DW/2, dy + DH/2)
+        if box_free(box, {tag}):
+            chosen = (dx, dy); break
+    if chosen is None:
+        chosen = cands[0]
+        print(f"WARN diamond {tag}: no free spot", file=sys.stderr)
+    dx, dy = chosen
     diamond(dx, dy, label, identifying)
+    OBST.append(("diamond:" + tag, dx - DW/2, dy - DH/2, dx + DW/2, dy + DH/2, {tag}))
+
+# attributes
+def attr_candidates(side, n):
+    """list of candidate offset lists (dx, dy from entity centre)"""
+    def stack(x, step=AH + 10, shift=0):
+        return [(x, (i - (n - 1) / 2) * step + shift) for i in range(n)]
+    def row(y, step=AW + 8, shift=0):
+        return [((i - (n - 1) / 2) * step + shift, y) for i in range(n)]
+    def block(sx, sy):   # 2-column block in a corner
+        cols = 2
+        out = []
+        for i in range(n):
+            col, rw = i % cols, i // cols
+            out.append((sx * (EW / 2 + 60 + AW / 2 + col * (AW + 8)), sy * (EH / 2 + 26 + AH / 2 + rw * (AH + 8))))
+        return out
+    L_ = EW / 2 + 70 + AW / 2
+    T_ = EH / 2 + 56
+    named = {
+        "left": stack(-L_), "right": stack(L_), "top": row(-T_), "bottom": row(T_),
+        "left-up": stack(-L_, shift=-30), "right-up": stack(L_, shift=-30),
+        "left-down": stack(-L_, shift=30), "right-down": stack(L_, shift=30),
+        "top-left": row(-T_, shift=-100), "top-right": row(-T_, shift=100),
+        "bottom-left": row(T_, shift=-100), "bottom-right": row(T_, shift=100),
+        "block-tr": block(1, -1), "block-tl": block(-1, -1), "block-br": block(1, 1), "block-bl": block(-1, 1),
+    }
+    if isinstance(side, list):
+        return [side]
+    if side == "auto":
+        order = ["left", "right", "top", "bottom", "left-up", "left-down", "right-up", "right-down",
+                 "top-left", "top-right", "bottom-left", "bottom-right", "block-tl", "block-tr", "block-bl", "block-br"]
+        return [named[k] for k in order]
+    return [named[side]]
+
+for name, (c, r, side) in L["entities"].items():
+    cx, cy = ent_px[name]
+    drop = set(model_names) - set(L["entities"])
+    if name not in L["org_roots"]:
+        drop.add("Organization")
+    keys = keys_of(name, drop_fk=drop)
+    n = len(keys)
+    if n == 0:
+        continue
+    chosen = None
+    for offs in attr_candidates(side, n):
+        ok = True
+        for (dx, dy) in offs:
+            ax, ay = cx + dx, cy + dy
+            if not box_free((ax - AW/2, ay - AH/2, ax + AW/2, ay + AH/2), {name}):
+                ok = False; break
+            p = clip_rect(cx, cy, EW, EH, ax, ay); q = clip_rect(ax, ay, AW, AH, cx, cy)
+            # connector must not run through other things either
+            for oname, x0, y0, x1, y1, own in OBST:
+                if own & {name}: continue
+                if seg_hits_box(p, q, (x0, y0, x1, y1), 2): ok = False; break
+            if not ok: break
+        if ok:
+            chosen = offs; break
+    if chosen is None:
+        chosen = attr_candidates(side, n)[0]
+        print(f"WARN attrs {name}: no free side", file=sys.stderr)
+    for (kname, kind), (dx, dy) in zip(keys, chosen):
+        ax, ay = cx + dx, cy + dy
+        p = clip_rect(cx, cy, EW, EH, ax, ay)
+        q = clip_rect(ax, ay, AW, AH, cx, cy)
+        line(p, q, width=1.3, color="#9aa3af")
+        attribute(ax, ay, kname, kind)
+        OBST.append((f"attr:{name}.{kname}", ax - AW/2, ay - AH/2, ax + AW/2, ay + AH/2, {name}))
+
+# ----------------------------------------------------------------------------- collision report
+warn = 0
+for tag, pts, own in SEGS:
+    for name, x0, y0, x1, y1, owners in OBST:
+        if own & owners:
+            continue
+        for i in range(len(pts) - 1):
+            if seg_hits_box(pts[i], pts[i + 1], (x0, y0, x1, y1)):
+                print(f"WARN line {tag} crosses {name}", file=sys.stderr); warn += 1
+                break
+for i in range(len(OBST)):
+    for j in range(i + 1, len(OBST)):
+        a, b = OBST[i], OBST[j]
+        if a[5] & b[5]:
+            continue
+        if bbox_hit(a[1:5], b[1:5], -6):
+            print(f"WARN overlap {a[0]} / {b[0]}", file=sys.stderr); warn += 1
+print(f"{warn} warnings", file=sys.stderr)
 
 # canvas size
 xs = [float(v) for s in lines + shapes for v in re.findall(r'(?:x\d?|cx|x1|x2)="(-?[\d.]+)"', s)]

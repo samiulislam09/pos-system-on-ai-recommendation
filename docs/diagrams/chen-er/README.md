@@ -16,12 +16,25 @@ node render.js full.dot neato ../er-chen-full.svg
 # 15 core tables, hand laid out on a grid (draw_er.py, no Graphviz)
 python3 draw_er.py ../../../backend/packages/database/prisma/schema.prisma core15 ../er-chen-core15.svg
 ./topng.sh ../er-chen-core15.svg ../er-chen-core15.png
+
+# all 33 tables, same style (draw_er.py, LAYOUTS["full33"])
+python3 draw_er.py ../../../backend/packages/database/prisma/schema.prisma full33 ../er-chen-full33.svg
+./topng.sh ../er-chen-full33.svg ../er-chen-full33.png
 ```
 
 `draw_er.py` renders SVG directly from a layout written by hand (`LAYOUTS["core15"]`): which grid cell each
 entity sits in, which side its attributes fan out to, and the route of each relationship (straight line or a
 polyline through free lanes). Keys are still read from the Prisma schema, so adding a column to a table
 updates the picture; moving a table is a one-line edit of its grid position.
+
+An attribute side or diamond position of `"auto"` is chosen by the script: it tries left/right/top/bottom and a
+few corner blocks (or points along the connector for a diamond) and keeps the first spot that touches nothing
+already drawn. After drawing it prints a `WARN` line for every line that still crosses a box, ellipse or
+diamond, and for every pair of shapes that overlap, so a layout can be tuned until it reports `0 warnings`.
+Self relations take `"self"`, `"self-left"`, `"self-top"` or `"self-bottom"`.
+
+`full33` draws every foreign key except `Organization -> Location`, which would have to cross the whole
+catalogue column; Location still shows its `organizationId` key.
 
 Flags for the Graphviz generator (`gen_er.py`):
 
